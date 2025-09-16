@@ -21,7 +21,7 @@ export interface UserModel {
   imageUrl: string;
 }
 
-// FIX: Add SavedOutfit interface to resolve missing type error in SavedOutfitsModal.tsx.
+// FIX: Added SavedOutfit interface to resolve missing type error.
 export interface SavedOutfit {
   id: string;
   name: string;

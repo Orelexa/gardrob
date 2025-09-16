@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 
-import { GenerateContentResponse, Modality } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse, Modality } from "@google/genai";
 
 const fileToPart = async (file: File) => {
     const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -28,29 +28,6 @@ const dataUrlToPart = (dataUrl: string) => {
     const { mimeType, data } = dataUrlToParts(dataUrl);
     return { inlineData: { mimeType, data } };
 }
-
-const GEMINI_PROXY_ENDPOINT = '/.netlify/functions/gemini-proxy';
-
-const callGeminiProxy = async (payload: object): Promise<GenerateContentResponse> => {
-    const response = await fetch(GEMINI_PROXY_ENDPOINT, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-    });
-
-    const responseData = await response.json();
-
-    if (!response.ok) {
-        // A proxy funkció egy 'error' kulccsal rendelkező JSON objektumot ad vissza hiba esetén.
-        const errorMessage = responseData.error || `A proxy kérés sikertelen, státusz: ${response.status}`;
-        throw new Error(errorMessage);
-    }
-
-    return responseData as GenerateContentResponse;
-};
-
 
 const handleApiResponse = (response: GenerateContentResponse): string => {
     if (response.promptFeedback?.blockReason) {
@@ -78,21 +55,19 @@ const handleApiResponse = (response: GenerateContentResponse): string => {
     throw new Error(errorMessage);
 };
 
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
 const model = 'gemini-2.5-flash-image-preview';
 
 export const generateModelImage = async (userImage: File): Promise<string> => {
     const userImagePart = await fileToPart(userImage);
     const prompt = "You are an expert fashion photographer AI. Transform the person in this image into a full-body fashion model photo suitable for an e-commerce website. The background must be a clean, neutral studio backdrop (light gray, #f0f0f0). The person should have a neutral, professional model expression. Preserve the person's identity, unique features, and body type, but place them in a standard, relaxed standing model pose. The final image must be photorealistic. Return ONLY the final image.";
-    
-    const payload = {
+    const response = await ai.models.generateContent({
         model,
         contents: { parts: [userImagePart, { text: prompt }] },
         config: {
             responseModalities: [Modality.IMAGE, Modality.TEXT],
         },
-    };
-
-    const response = await callGeminiProxy(payload);
+    });
     return handleApiResponse(response);
 };
 
@@ -110,31 +85,25 @@ export const generateVirtualTryOnImage = async (modelImageUrl: string, garmentIm
 4.  **Preserve the Background:** The entire background from the 'model image' MUST be preserved perfectly.
 5.  **Apply the Garment:** Realistically fit the new garment onto the person. It should adapt to their pose with natural folds, shadows, and lighting consistent with the original scene.
 6.  **Output:** Return ONLY the final, edited image. Do not include any text.`;
-    
-    const payload = {
+    const response = await ai.models.generateContent({
         model,
         contents: { parts: [modelImagePart, garmentImagePart, { text: prompt }] },
         config: {
             responseModalities: [Modality.IMAGE, Modality.TEXT],
         },
-    };
-
-    const response = await callGeminiProxy(payload);
+    });
     return handleApiResponse(response);
 };
 
 export const generatePoseVariation = async (tryOnImageUrl: string, poseInstruction: string): Promise<string> => {
     const tryOnImagePart = dataUrlToPart(tryOnImageUrl);
     const prompt = `You are an expert fashion photographer AI. Take this image and regenerate it from a different perspective. The person, clothing, and background style must remain identical. The new perspective should be: "${poseInstruction}". Return ONLY the final image.`;
-    
-    const payload = {
+    const response = await ai.models.generateContent({
         model,
         contents: { parts: [tryOnImagePart, { text: prompt }] },
         config: {
             responseModalities: [Modality.IMAGE, Modality.TEXT],
         },
-    };
-    
-    const response = await callGeminiProxy(payload);
+    });
     return handleApiResponse(response);
 };

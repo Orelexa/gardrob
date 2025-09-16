@@ -14,7 +14,6 @@ interface OutfitStackProps {
 }
 
 const OutfitStack: React.FC<OutfitStackProps> = ({ outfitHistory, onRemoveLastGarment, onAddGarment }) => {
-  
   return (
     <div className="h-full flex flex-col">
       <h2 className="text-xl font-serif tracking-wider text-gray-800 border-b border-gray-400/50 pb-2 mb-3">Jelenlegi Szett</h2>
@@ -50,13 +49,15 @@ const OutfitStack: React.FC<OutfitStackProps> = ({ outfitHistory, onRemoveLastGa
             <p className="text-center text-sm text-gray-500 pt-4">Az összeállított ruhadarabok itt fognak megjelenni. Kezdéshez adj hozzá egy ruhát a gardróbból.</p>
         )}
       </div>
-       <button 
-          onClick={onAddGarment}
-          className="mt-4 w-full flex items-center justify-center text-center bg-gray-900 text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200 ease-in-out hover:bg-gray-700 active:scale-95 text-base"
-      >
-          <PlusIcon className="w-5 h-5 mr-2" />
-          Ruha Hozzáadása
-      </button>
+      <div className="mt-4 flex flex-col gap-3">
+        <button 
+            onClick={onAddGarment}
+            className="w-full flex items-center justify-center text-center bg-gray-900 text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200 ease-in-out hover:bg-gray-700 active:scale-95 text-base"
+        >
+            <PlusIcon className="w-5 h-5 mr-2" />
+            Ruha Hozzáadása
+        </button>
+      </div>
     </div>
   );
 };
