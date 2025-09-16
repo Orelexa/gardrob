@@ -1,0 +1,6 @@
+{
+  "name": "Gardrób",
+  "description": "Tölts fel egy fotót magadról és egy ruhadarabról, hogy megnézd, hogyan áll rajtad. Egy virtuális próbafülke, amit a Nano Banana hajt.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}
