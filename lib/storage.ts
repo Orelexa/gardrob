@@ -14,7 +14,8 @@ const firebaseConfig = {
   apiKey: import.meta.env.VITE_API_KEY,
   authDomain: "orelexa-gardrob.firebaseapp.com",
   projectId: "orelexa-gardrob",
-  storageBucket: "orelexa-gardrob.appspot.com",
+  // *** VÉGLEGES JAVÍTÁS: A helyes storageBucket név használata ***
+  storageBucket: "orelexa-gardrob.firebasestorage.app",
   messagingSenderId: "32555940559",
   appId: "1:32555940559:web:8672049d584340d0f622f6"
 };
@@ -55,24 +56,18 @@ export const saveModelForUser = async (username: string, modelData: { name: stri
 
 // --- RUHADARAB FUNKCIÓK ---
 
-/**
- * Feltölt egy képet a Firebase Storage-be és létrehoz egy bejegyzést a Firestore-ban.
- */
 export const uploadGarment = async (username: string, file: File, category: string): Promise<WardrobeItem> => {
   console.log(`📤 Kép feltöltése Firebase Storage-ba: ${file.name}`);
   const uniqueId = `custom-${Date.now()}`;
   const storagePath = `users/${username}/wardrobe/${uniqueId}.jpg`;
   const storageRef = ref(storageInstance, storagePath);
 
-  // Kép feltöltése a Storage-be
   await uploadBytes(storageRef, file);
   console.log('✅ Kép sikeresen feltöltve');
 
-  // A feltöltött kép URL-jének lekérése
   const imageUrl = await getDownloadURL(storageRef);
   console.log(`🔗 Kép URL-je: ${imageUrl}`);
 
-  // Adatbázis bejegyzés létrehozása
   const newGarment: Omit<WardrobeItem, 'id'> = {
     name: file.name.split('.')[0],
     category: category,
@@ -102,7 +97,7 @@ export const updateGarmentForUser = async (username: string, garment: WardrobeIt
     console.log(`🔄 Ruhadarab frissítése: ${garment.id}`);
     const docRef = doc(db, 'users', username, 'wardrobe', garment.id);
     const dataToUpdate = { ...garment };
-    delete dataToUpdate.id; // Az ID-t nem tároljuk magában a dokumentumban
+    delete dataToUpdate.id;
     await updateDoc(docRef, dataToUpdate);
     console.log('✅ Ruhadarab sikeresen frissítve');
 };
@@ -110,7 +105,6 @@ export const updateGarmentForUser = async (username: string, garment: WardrobeIt
 export const deleteGarmentForUser = async (username: string, garmentId: string): Promise<void> => {
     console.log(`🗑️ Ruhadarab törlése: ${garmentId}`);
     
-    // Ha custom-xxxx ID, akkor a Storage-ből is töröljük
     if (garmentId.startsWith('custom-')) {
         console.log('🗑️ Kép törlése Firebase Storage-ból');
         const storagePath = `users/${username}/wardrobe/${garmentId}.jpg`;
@@ -122,7 +116,7 @@ export const deleteGarmentForUser = async (username: string, garmentId: string):
             if (error.code === 'storage/object-not-found') {
                 console.warn('A kép nem létezett a Storage-ben, de a törlés folytatódik.');
             } else {
-                throw error; // Más hiba esetén továbbdobjuk
+                throw error;
             }
         }
     }
@@ -135,6 +129,5 @@ export const deleteGarmentForUser = async (username: string, garmentId: string):
 
 export const getHiddenDefaultGarmentsForUser = async (username: string): Promise<string[]> => {
   const docRef = doc(db, 'users', username, 'settings', 'visibility');
-  // Ez a rész még nincs implementálva, egyelőre üres listát ad vissza
   return [];
 };
