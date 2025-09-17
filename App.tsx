@@ -68,7 +68,6 @@ function App() {
     return Array.from(wardrobeMap.values());
   }, [userWardrobe, hiddenGarments]);
 
-
   const resetDressingRoom = useCallback(() => {
     if (selectedModel) {
       setOutfitHistory([{
@@ -85,16 +84,37 @@ function App() {
     }
   }, [screen, selectedModel, resetDressingRoom]);
 
+  // FIREBASE ASYNC VERZIÓ - Felhasználói adatok betöltése
   useEffect(() => {
     if (currentUser) {
-      setUserWardrobe(storage.getWardrobeForUser(currentUser));
-      setHiddenGarments(storage.getHiddenDefaultGarmentsForUser(currentUser));
+      const loadUserData = async () => {
+        try {
+          setIsLoading(true);
+          setLoadingMessage('Felhasználói adatok betöltése...');
+          
+          const [wardrobe, hidden] = await Promise.all([
+            storage.getWardrobeForUser(currentUser),
+            storage.getHiddenDefaultGarmentsForUser(currentUser)
+          ]);
+          
+          setUserWardrobe(wardrobe);
+          setHiddenGarments(hidden);
+        } catch (error) {
+          console.error('Hiba a felhasználói adatok betöltése során:', error);
+          alert(getFriendlyErrorMessage(error, 'Nem sikerült betölteni a felhasználói adatokat'));
+          setUserWardrobe([]);
+          setHiddenGarments([]);
+        } finally {
+          setIsLoading(false);
+          setLoadingMessage('');
+        }
+      };
+      loadUserData();
     } else {
       setUserWardrobe([]);
       setHiddenGarments([]);
     }
   }, [currentUser]);
-
 
   const handleLoginSuccess = (username: string) => {
     setCurrentUser(username);
@@ -116,11 +136,23 @@ function App() {
     setScreen(SCREENS.CREATE_MODEL);
   };
 
-  const handleModelFinalized = (name: string, imageUrl: string) => {
+  // FIREBASE ASYNC VERZIÓ - Model mentése
+  const handleModelFinalized = async (name: string, imageUrl: string) => {
     if (currentUser) {
-      const newModel = storage.saveModelForUser(currentUser, { name, imageUrl });
-      setSelectedModel(newModel);
-      setScreen(SCREENS.DRESSING_ROOM);
+      try {
+        setIsLoading(true);
+        setLoadingMessage('Model mentése...');
+        
+        const newModel = await storage.saveModelForUser(currentUser, { name, imageUrl });
+        setSelectedModel(newModel);
+        setScreen(SCREENS.DRESSING_ROOM);
+      } catch (error) {
+        console.error('Hiba a model mentése során:', error);
+        alert(getFriendlyErrorMessage(error, 'Nem sikerült menteni a modellt'));
+      } finally {
+        setIsLoading(false);
+        setLoadingMessage('');
+      }
     }
   };
   
@@ -160,41 +192,73 @@ function App() {
       .finally(() => setIsLoading(false));
   };
   
+  // FIREBASE ASYNC VERZIÓ - Ruhadarab hozzáadása
   const handleGarmentAdd = async (garmentFile: File, category: string): Promise<void> => {
     if (!currentUser) return;
     try {
-        const dataUrl = await fileToDataUrl(garmentFile);
-        const newGarment: WardrobeItem = {
-            id: `custom-${Date.now()}`,
-            name: garmentFile.name,
-            url: dataUrl,
-            category: category,
-        };
-        storage.saveGarmentForUser(currentUser, newGarment);
-        setUserWardrobe(prev => [newGarment, ...prev]);
+      setIsLoading(true);
+      setLoadingMessage('Ruhadarab mentése...');
+      
+      const dataUrl = await fileToDataUrl(garmentFile);
+      const newGarment: WardrobeItem = {
+        id: `custom-${Date.now()}`,
+        name: garmentFile.name,
+        url: dataUrl,
+        category: category,
+      };
+      
+      await storage.saveGarmentForUser(currentUser, newGarment);
+      setUserWardrobe(prev => [newGarment, ...prev]);
     } catch (error) {
-        alert(getFriendlyErrorMessage(error, "Nem sikerült a ruhadarab mentése"));
+      console.error('Hiba a ruhadarab mentése során:', error);
+      alert(getFriendlyErrorMessage(error, "Nem sikerült a ruhadarab mentése"));
+    } finally {
+      setIsLoading(false);
+      setLoadingMessage('');
     }
   };
 
-  const handleGarmentUpdate = (updatedGarment: WardrobeItem) => {
+  // FIREBASE ASYNC VERZIÓ - Ruhadarab frissítése
+  const handleGarmentUpdate = async (updatedGarment: WardrobeItem) => {
     if (!currentUser) return;
-    storage.updateGarmentForUser(currentUser, updatedGarment);
-    setUserWardrobe(prev => prev.map(g => g.id === updatedGarment.id ? updatedGarment : g));
+    try {
+      setIsLoading(true);
+      setLoadingMessage('Ruhadarab frissítése...');
+      
+      await storage.updateGarmentForUser(currentUser, updatedGarment);
+      setUserWardrobe(prev => prev.map(g => g.id === updatedGarment.id ? updatedGarment : g));
+    } catch (error) {
+      console.error('Hiba a ruhadarab frissítése során:', error);
+      alert(getFriendlyErrorMessage(error, 'Nem sikerült frissíteni a ruhadarabot'));
+    } finally {
+      setIsLoading(false);
+      setLoadingMessage('');
+    }
   };
 
-  const handleGarmentDelete = (garmentId: string) => {
+  // FIREBASE ASYNC VERZIÓ - Ruhadarab törlése
+  const handleGarmentDelete = async (garmentId: string) => {
     if (!currentUser) return;
-    storage.deleteGarmentForUser(currentUser, garmentId);
+    try {
+      setIsLoading(true);
+      setLoadingMessage('Ruhadarab törlése...');
+      
+      await storage.deleteGarmentForUser(currentUser, garmentId);
 
-    const isDefault = defaultWardrobe.some(g => g.id === garmentId);
-    if (isDefault) {
+      const isDefault = defaultWardrobe.some(g => g.id === garmentId);
+      if (isDefault) {
         setHiddenGarments(prev => [...prev, garmentId]);
-    } else {
+      } else {
         setUserWardrobe(prev => prev.filter(g => g.id !== garmentId));
+      }
+    } catch (error) {
+      console.error('Hiba a ruhadarab törlése során:', error);
+      alert(getFriendlyErrorMessage(error, 'Nem sikerült törölni a ruhadarabot'));
+    } finally {
+      setIsLoading(false);
+      setLoadingMessage('');
     }
   };
-
 
   const handleRemoveLastGarment = () => {
     if (outfitHistory.length > 1) {
@@ -262,7 +326,6 @@ function App() {
   const currentPoseInstruction = POSE_INSTRUCTIONS[currentPoseIndex];
   const displayImageUrl = useMemo(() => currentLayer?.poseImages[currentPoseInstruction] || null, [currentLayer, currentPoseInstruction]);
   const activeGarmentIds = useMemo(() => outfitHistory.map(l => l.garment?.id).filter(Boolean) as string[], [outfitHistory]);
-
 
   const renderScreen = () => {
     switch(screen) {
