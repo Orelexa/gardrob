@@ -153,6 +153,18 @@ function App() {
 
   const handleGarmentSelectForTryOn = (garment: WardrobeItem) => {
     setIsWardrobeOpen(false);
+    
+    // *** VÉGSŐ, ABSZOLÚT UTOLSÓ JAVÍTÁS ***
+    // A ruhadarab képének címe a modellhez hasonlóan 'imageUrl', nem 'url'.
+    const garmentUrl = garment.imageUrl; 
+
+    if (!garmentUrl) {
+      alert(`Hiba: A kiválasztott ruhadarabnak (${garment.name}) nincs kép címe (URL). Lehet, hogy egy régi, hibás adatelem.`);
+      console.error("Érvénytelen ruhadarab objektum:", garment);
+      return;
+    }
+    // *** JAVÍTÁS VÉGE ***
+
     if (!selectedModel || outfitHistory.length === 0) return;
 
     setIsLoading(true);
@@ -168,8 +180,7 @@ function App() {
       return;
     }
 
-    // A JAVÍTÁS: Itt a 'garment.url'-t adjuk át, nem a teljes 'garment' objektumot.
-    generateVirtualTryOnImage(baseImageUrl, garment.url)
+    generateVirtualTryOnImage(baseImageUrl, garmentUrl)
       .then(newImageUrl => {
         const newLayer: OutfitLayer = {
           garment: garment,
