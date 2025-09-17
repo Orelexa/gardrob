@@ -1,10 +1,13 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
-*/
+ */
+// VÉGLEGES, STABIL VERZIÓ
 import React, { useState } from 'react';
-import * as storage from '../lib/storage';
-import { ShirtIcon } from './icons';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { auth } from '../lib/storage'; // A központi auth szolgáltatás importálása
+import { getFriendlyErrorMessage } from '../lib/utils';
+import Spinner from './Spinner';
 
 interface AuthScreenProps {
   onLoginSuccess: (username: string) => void;
@@ -12,98 +15,59 @@ interface AuthScreenProps {
 
 const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
   const [isLogin, setIsLogin] = useState(true);
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('ready67@gmail.com');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    if (!username || !password) {
-      setError('A felhasználónév és a jelszó megadása kötelező.');
-      return;
-    }
+    setError('');
+    setIsLoading(true);
 
     try {
-      if (isLogin) {
-        if (await storage.login(username, password)) {
-          onLoginSuccess(username);
-        } else {
-          setError('Érvénytelen felhasználónév vagy jelszó.');
-        }
-      } else {
-        if (await storage.signup(username, password)) {
-          onLoginSuccess(username);
-        } else {
-          setError('A felhasználónév már létezik.');
-        }
+      const userCredential = isLogin 
+        ? await signInWithEmailAndPassword(auth, email, password)
+        : await createUserWithEmailAndPassword(auth, email, password);
+      
+      if (userCredential.user.email) {
+        onLoginSuccess(userCredential.user.email);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ismeretlen hiba történt.');
+      setError(getFriendlyErrorMessage(err, 'Sikertelen művelet'));
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="w-full max-w-md bg-white p-8 rounded-2xl shadow-lg">
+    <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-sm">
       <div className="text-center mb-8">
-        <ShirtIcon className="w-10 h-10 text-gray-700 mx-auto mb-3" />
-        <h1 className="text-4xl font-serif font-bold text-gray-900">Gardrób</h1>
-        <p className="text-gray-600 mt-2">A te személyes virtuális próbafülkéd.</p>
+        <h1 className="text-3xl font-bold">Gardrób</h1>
+        <p className="text-gray-500">A te személyes virtuális próbafülkéd.</p>
       </div>
-      
-      <div className="flex border-b border-gray-200 mb-6">
-        <button 
-          onClick={() => { setIsLogin(true); setError(null); }}
-          className={`flex-1 py-2 text-sm font-semibold transition-colors ${isLogin ? 'text-gray-800 border-b-2 border-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
-        >
-          Bejelentkezés
-        </button>
-        <button 
-          onClick={() => { setIsLogin(false); setError(null); }}
-          className={`flex-1 py-2 text-sm font-semibold transition-colors ${!isLogin ? 'text-gray-800 border-b-2 border-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
-        >
-          Regisztráció
-        </button>
+      <div className="flex border-b mb-6">
+        <button onClick={() => setIsLogin(true)} className={`flex-1 py-2 text-center font-semibold ${isLogin ? 'border-b-2 border-blue-500 text-blue-500' : 'text-gray-500'}`}>Bejelentkezés</button>
+        <button onClick={() => setIsLogin(false)} className={`flex-1 py-2 text-center font-semibold ${!isLogin ? 'border-b-2 border-blue-500 text-blue-500' : 'text-gray-500'}`}>Regisztráció</button>
       </div>
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="username">Felhasználónév</label>
-          <input
-            id="username"
-            type="text"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-gray-800 focus:border-gray-800 transition-colors"
-            autoComplete="username"
-          />
+      <form onSubmit={handleSubmit}>
+        <div className="mb-4">
+          <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="email">Felhasználónév</label>
+          <input className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="email@cim.com" required />
         </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="password">Jelszó</label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-gray-800 focus:border-gray-800 transition-colors"
-            autoComplete={isLogin ? "current-password" : "new-password"}
-          />
+        <div className="mb-6">
+          <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="password">Jelszó</label>
+          <input className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 mb-3 leading-tight focus:outline-none focus:shadow-outline" id="password" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="******************" required />
+          {error && <p className="text-red-500 text-xs italic">{error}</p>}
         </div>
-
-        {error && <p className="text-red-500 text-sm">{error}</p>}
-
-        <button
-          type="submit"
-          className="w-full mt-2 px-8 py-3 text-base font-semibold text-white bg-gray-900 rounded-md cursor-pointer group hover:bg-gray-700 transition-colors"
-        >
-          {isLogin ? 'Bejelentkezés' : 'Fiók létrehozása'}
-        </button>
+        <div className="flex items-center justify-between">
+          <button className="bg-gray-800 hover:bg-gray-900 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline w-full flex justify-center items-center" type="submit" disabled={isLoading}>
+            {isLoading ? <Spinner /> : (isLogin ? 'Bejelentkezés' : 'Regisztráció')}
+          </button>
+        </div>
       </form>
-       <p className="text-xs text-gray-400 text-center mt-6">
-        Megjegyzés: Ez egy demó. Minden adat helyileg, a böngésződben tárolódik.
-      </p>
     </div>
   );
-};
+}
 
 export default AuthScreen;
