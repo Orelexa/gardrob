@@ -29,7 +29,7 @@ const SCREENS = {
 };
 
 const POSE_INSTRUCTIONS = [
-  "Szemben állva", // This will be the default/initial pose
+  "Szemben állva",
   "Enyhén elfordulva, 3/4-es nézet",
   "Oldalnézet",
   "Kamera felé sétálva",
@@ -45,7 +45,6 @@ function App() {
   const [currentUser, setCurrentUser] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<UserModel | null>(null);
 
-  // Dressing Room State
   const [outfitHistory, setOutfitHistory] = useState<OutfitLayer[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
@@ -96,8 +95,6 @@ function App() {
         } catch (error) {
           console.error('Hiba a felhasználói adatok betöltése során:', error);
           alert(getFriendlyErrorMessage(error, 'Nem sikerült betölteni a felhasználói adatokat'));
-          setUserWardrobe([]);
-          setHiddenGarments([]);
         } finally {
           setIsLoading(false);
           setLoadingMessage('');
@@ -154,8 +151,6 @@ function App() {
     setScreen(SCREENS.MODEL_SELECTION);
   };
 
-  // VÉGLEGES JAVÍTÁS: A függvény most már helyesen csak egy WardrobeItem-et fogad,
-  // és annak az `url` tulajdonságát adja tovább.
   const handleGarmentSelectForTryOn = (garment: WardrobeItem) => {
     setIsWardrobeOpen(false);
     if (!selectedModel || outfitHistory.length === 0) return;
@@ -167,12 +162,13 @@ function App() {
     const baseImageUrl = lastLayer.poseImages[POSE_INSTRUCTIONS[0]];
 
     if (!baseImageUrl) {
-      alert("Az előző réteg alapképe nem található. A folyamat alaphelyzetbe áll.");
+      alert("Az előző réteg alapképe nem található.");
       setIsLoading(false);
       resetDressingRoom();
       return;
     }
 
+    // A JAVÍTÁS: Itt a 'garment.url'-t adjuk át, nem a teljes 'garment' objektumot.
     generateVirtualTryOnImage(baseImageUrl, garment.url)
       .then(newImageUrl => {
         const newLayer: OutfitLayer = {
@@ -192,7 +188,6 @@ function App() {
     try {
       setIsLoading(true);
       setLoadingMessage('Ruhadarab mentése...');
-      // A kép feltöltése és URL lekérése
       const newGarment = await storage.uploadGarment(currentUser, garmentFile, category);
       setUserWardrobe(prev => [newGarment, ...prev]);
     } catch (error) {
@@ -241,4 +236,114 @@ function App() {
     }
   };
 
-  const handleRemoveLastGarment =
+  const handleRemoveLastGarment = () => {
+    if (outfitHistory.length > 1) {
+      setOutfitHistory(prev => prev.slice(0, -1));
+      setCurrentPoseIndex(0);
+    }
+  };
+
+  const handlePoseSelect = async (poseIndex: number) => {
+    const targetPoseInstruction = POSE_INSTRUCTIONS[poseIndex];
+    const currentLayer = outfitHistory[outfitHistory.length - 1];
+
+    if (currentLayer.poseImages[targetPoseInstruction]) {
+      setCurrentPoseIndex(poseIndex);
+      return;
+    }
+
+    setIsLoading(true);
+    setLoadingMessage(`Póz váltása: ${targetPoseInstruction}...`);
+    const sourceImageUrl = currentLayer.poseImages[POSE_INSTRUCTIONS[0]];
+    if (!sourceImageUrl) {
+      alert("Hiányzik az alap kép a jelenlegi szetthez.");
+      setIsLoading(false);
+      return;
+    }
+    try {
+      const newPoseImageUrl = await generatePoseVariation(sourceImageUrl, targetPoseInstruction);
+      setOutfitHistory(prev => {
+        const newHistory = [...prev];
+        const lastLayerIndex = newHistory.length - 1;
+        if (lastLayerIndex < 0) return prev;
+        
+        const originalLastLayer = newHistory[lastLayerIndex];
+        const updatedLastLayer = {
+          ...originalLastLayer,
+          poseImages: {
+            ...originalLastLayer.poseImages,
+            [targetPoseInstruction]: newPoseImageUrl,
+          },
+        };
+        newHistory[lastLayerIndex] = updatedLastLayer;
+        return newHistory;
+      });
+      setCurrentPoseIndex(poseIndex);
+    } catch (err) {
+      alert(getFriendlyErrorMessage(err, 'Nem sikerült az új pózt létrehozni'));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const currentLayer = useMemo(() => outfitHistory.length > 0 ? outfitHistory[outfitHistory.length - 1] : null, [outfitHistory]);
+  const currentPoseInstruction = POSE_INSTRUCTIONS[currentPoseIndex];
+  const displayImageUrl = useMemo(() => currentLayer?.poseImages[currentPoseInstruction] || null, [currentLayer, currentPoseInstruction]);
+  const activeGarmentIds = useMemo(() => outfitHistory.map(l => l.garment?.id).filter(Boolean) as string[], [outfitHistory]);
+
+  const renderScreen = () => {
+    switch(screen) {
+      case SCREENS.AUTH:
+        return <main className="w-full min-h-screen flex items-center justify-center bg-gray-50 p-4"><AuthScreen onLoginSuccess={handleLoginSuccess} /></main>;
+      case SCREENS.MODEL_SELECTION:
+        if (!currentUser) return null;
+        return <main className="w-full min-h-screen flex flex-col items-center justify-center bg-gray-50 p-4"><ModelSelectionScreen username={currentUser} onModelSelect={handleModelSelect} onCreateModel={handleCreateModel} onLogout={handleLogout} /></main>;
+      case SCREENS.CREATE_MODEL:
+        return <main className="w-full min-h-screen flex items-center justify-center bg-gray-50 p-4"><StartScreen onModelFinalized={handleModelFinalized} /></main>;
+      case SCREENS.DRESSING_ROOM:
+        return (
+          <>
+            <Header />
+            <main className="w-full max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8 p-4 md:p-8">
+              <div className="lg:col-span-2 h-[calc(100vh-200px)] min-h-[500px]">
+                <Canvas
+                  displayImageUrl={displayImageUrl}
+                  onStartOver={handleStartOver}
+                  isLoading={isLoading}
+                  loadingMessage={loadingMessage}
+                  onSelectPose={handlePoseSelect}
+                  poseInstructions={POSE_INSTRUCTIONS}
+                  currentPoseIndex={currentPoseIndex}
+                />
+              </div>
+              <div className="lg:col-span-1">
+                <OutfitStack
+                  outfitHistory={outfitHistory}
+                  onRemoveLastGarment={handleRemoveLastGarment}
+                  onAddGarment={() => setIsWardrobeOpen(true)}
+                />
+              </div>
+            </main>
+            <Footer isOnDressingScreen />
+            <WardrobeModal
+              isOpen={isWardrobeOpen}
+              onClose={() => setIsWardrobeOpen(false)}
+              onGarmentSelect={handleGarmentSelectForTryOn}
+              onGarmentAdd={handleGarmentAdd}
+              onGarmentDelete={handleGarmentDelete}
+              onGarmentUpdate={handleGarmentUpdate}
+              wardrobe={combinedWardrobe}
+              activeGarmentIds={activeGarmentIds}
+              isLoading={isLoading}
+            />
+          </>
+        );
+      default:
+        return <main className="w-full min-h-screen flex items-center justify-center bg-gray-50 p-4"><AuthScreen onLoginSuccess={handleLoginSuccess} /></main>;
+    }
+  };
+
+  return <div className="antialiased font-sans text-gray-800">{renderScreen()}</div>;
+}
+
+export default App;
