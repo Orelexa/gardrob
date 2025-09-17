@@ -1,60 +1,62 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
-*/
+import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from "@google/genai";
 
-import { GoogleGenAI, GenerateContentResponse } from "https://esm.sh/@google/genai@^1.10.0";
-
-// Standard Netlify Function handler
-export default async (req: Request): Promise<Response> => {
-  // CORS engedélyezése a helyi fejlesztéshez és a Netlify telepítéshez
-  const headers = {
-    'Access-Control-Allow-Origin': '*', // Vagy add meg a saját domainedet
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Content-Type': 'application/json'
-  };
-
-  // CORS preflight kérések kezelése
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers });
-  }
-
-  if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method Not Allowed' }), { status: 405, headers });
+export const handler = async (event) => {
+  if (event.httpMethod !== 'POST') {
+    return { statusCode: 405, body: 'Method Not Allowed' };
   }
 
   try {
-    // Az API kulcs beolvasása a Netlify környezeti változóiból
-    const apiKey = process.env.API_KEY;
-    if (!apiKey) {
-      throw new Error("Az API_KEY környezeti változó nincs beállítva a szerveren.");
+    const { modelImageUrl, garmentImageUrl } = JSON.parse(event.body);
+
+    const API_KEY = process.env.VITE_API_KEY;
+    if (!API_KEY) {
+      throw new Error("API kulcs nincs beállítva a szerver oldalon.");
     }
     
-    const ai = new GoogleGenAI({ apiKey });
-    
-    const body = await req.json();
-    const { model, contents, config } = body;
+    const ai = new GoogleGenAI(API_KEY);
+    const model = 'gemini-1.5-flash';
 
-    if (!model || !contents) {
-        return new Response(JSON.stringify({ error: 'Hiányzó kötelező paraméterek: model és contents' }), { status: 400, headers });
-    }
+    const urlToPart = async (url) => {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`Hiba a kép letöltésekor: ${url}`);
+        const buffer = await response.arrayBuffer();
+        const base64Data = Buffer.from(buffer).toString('base64');
+        const mimeType = response.headers.get('content-type');
+        return { inlineData: { mimeType, data: base64Data } };
+    };
 
-    const response: GenerateContentResponse = await ai.models.generateContent({
-      model,
-      contents,
-      config,
+    const modelImagePart = await urlToPart(modelImageUrl);
+    const garmentImagePart = await urlToPart(garmentImageUrl);
+
+    const prompt = `You are an expert virtual try-on AI...`; // Ide jöhet a te részletes promptod
+
+    const gen_response = await ai.models.generateContent({
+        model,
+        contents: { parts: [modelImagePart, garmentImagePart, { text: prompt }] },
+        safetySettings: [
+            { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+            { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+            { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+            { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        ],
     });
 
-    // A Gemini válaszának stringgé alakítása és visszaküldése
-    return new Response(JSON.stringify(response), { status: 200, headers });
+    const result = gen_response.response;
+    const imagePart = result.candidates[0].content.parts.find(p => p.inlineData);
+    if (!imagePart) throw new Error("A modell nem adott vissza képet.");
+    
+    const imageBase64 = `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
+    
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ imageUrl: imageBase64 }),
+    };
 
   } catch (error) {
-    console.error("Hiba a Netlify funkcióban:", error);
-    const errorMessage = error instanceof Error ? error.message : "Ismeretlen hiba történt.";
-    return new Response(JSON.stringify({ error: errorMessage }), {
-      status: 500,
-      headers
-    });
+    console.error('Hiba a proxy funkcióban:', error);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: error.message }),
+    };
   }
 };
