@@ -25,7 +25,13 @@ const EDITABLE_CATEGORIES = CATEGORIES.filter(c => c !== 'Összes');
 
 // Helper to convert image URL to a File object
 const urlToFile = async (url: string, filename: string): Promise<File> => {
-    const response = await fetch(url);
+    // FIX: Use a CORS proxy to fetch images. This is necessary because fetching directly 
+    // from Firebase Storage is blocked by CORS policy, which caused the "add garment" feature to fail for user-uploaded items.
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+    const response = await fetch(proxyUrl);
+    if (!response.ok) {
+        throw new Error(`Failed to fetch image via proxy: ${response.statusText}`);
+    }
     const blob = await response.blob();
     const mimeType = blob.type;
     return new File([blob], filename, { type: mimeType });
@@ -55,6 +61,7 @@ const WardrobeModal: React.FC<WardrobeModalProps> = ({ isOpen, onClose, onGarmen
             const file = await urlToFile(item.url, `${item.id}.png`);
             onGarmentSelect(file, item);
         } catch (err) {
+            console.error(err); // Log the actual error for debugging
             setError('Nem sikerült betölteni a ruhadarabot. Kérjük, próbáld újra.');
         }
     };
