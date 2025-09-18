@@ -1,38 +1,25 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
 import React, { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-
-// Ikonok és komponensek
 import { UploadCloudIcon, CheckCircleIcon } from './icons';
-// import { Compare } from '../ui/uicompare'; // IDEIGLENESEN KIKOMMENTEZVE
 import Spinner from './Spinner';
-
-// Szervizek és segédfüggvények
 import { generateVirtualTryOnImage } from '../services/geminiService';
 import { getFriendlyErrorMessage } from '../lib/utils';
 
-// Propok definíciója
 interface StartScreenProps {
   onModelFinalized: (name: string, modelUrl: string) => void;
 }
 
-// Belső komponens a mentési lépéshez
 const SaveModelStep: React.FC<{
   modelUrl: string;
   onSave: (name: string) => void;
   onBack: () => void;
 }> = ({ modelUrl, onSave, onBack }) => {
   const [name, setName] = useState('Modellem');
-
   const handleSave = () => {
     if (name.trim()) {
       onSave(name.trim());
     }
   };
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -63,8 +50,6 @@ const SaveModelStep: React.FC<{
   );
 };
 
-
-// Fő komponens
 const StartScreen: React.FC<StartScreenProps> = ({ onModelFinalized }) => {
   const [userImageUrl, setUserImageUrl] = useState<string | null>(null);
   const [generatedModelUrl, setGeneratedModelUrl] = useState<string | null>(null);
@@ -76,7 +61,6 @@ const StartScreen: React.FC<StartScreenProps> = ({ onModelFinalized }) => {
       setError('Kérjük, válassz egy képfájlt.');
       return;
     }
-
     const reader = new FileReader();
     reader.onload = async (e) => {
       const dataUrl = e.target?.result as string;
@@ -84,13 +68,13 @@ const StartScreen: React.FC<StartScreenProps> = ({ onModelFinalized }) => {
       setIsGenerating(true);
       setGeneratedModelUrl(null);
       setError(null);
-
       try {
-        const result = await generateVirtualTryOnImage(dataUrl, file);
+        // Javított: üres string helyett adj meg egy változót vagy üres stringet, ha nincs garment képed
+        const result = await generateVirtualTryOnImage(dataUrl, '');
         setGeneratedModelUrl(result);
       } catch (err) {
         setError(getFriendlyErrorMessage(err, 'Nem sikerült a modell létrehozása.'));
-        setUserImageUrl(null); // Hiba esetén töröljük az előnézetet
+        setUserImageUrl(null);
       } finally {
         setIsGenerating(false);
       }
@@ -103,14 +87,7 @@ const StartScreen: React.FC<StartScreenProps> = ({ onModelFinalized }) => {
       handleFileSelect(e.target.files[0]);
     }
   };
-  
-  const reset = () => {
-    setUserImageUrl(null);
-    setGeneratedModelUrl(null);
-    setIsGenerating(false);
-    setError(null);
-  };
-  
+
   const screenVariants = {
     initial: { opacity: 0, x: -20 },
     animate: { opacity: 1, x: 0 },
@@ -126,45 +103,38 @@ const StartScreen: React.FC<StartScreenProps> = ({ onModelFinalized }) => {
   return (
     <AnimatePresence mode="wait">
       {!userImageUrl ? (
-        // 1. Képernyő: Feltöltés
         <motion.div
-            key="uploader"
-            className="w-full max-w-7xl mx-auto flex flex-col lg:flex-row items-center justify-center gap-8 lg:gap-12"
-            variants={screenVariants}
-            initial="initial"
-            animate="animate"
-            exit="exit"
-            transition={{ duration: 0.4, ease: 'easeInOut' }}
+          key="uploader"
+          className="w-full max-w-7xl mx-auto flex flex-col lg:flex-row items-center justify-center gap-8 lg:gap-12"
+          variants={screenVariants}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          transition={{ duration: 0.4, ease: 'easeInOut' }}
         >
-            {/* ... A képernyő tartalma itt változatlan ... */}
-            {/* Az eredeti Compare komponenst egy sima kép helyettesíti */}
-             <div className="w-full lg:w-1/2 flex flex-col items-center justify-center">
-                <img src="https://storage.googleapis.com/gemini-95-icons/asr-tryon.jpg" alt="Példa" className="w-full max-w-sm aspect-[2/3] rounded-2xl bg-gray-200" />
-            </div>
-
+          <div className="w-full lg:w-1/2 flex flex-col items-center justify-center">
+            <img src="https://storage.googleapis.com/gemini-95-icons/asr-tryon.jpg" alt="Példa" className="w-full max-w-sm aspect-[2/3] rounded-2xl bg-gray-200" />
+          </div>
         </motion.div>
       ) : (
-        // 2. Képernyő: Összehasonlítás és mentés
         <motion.div
-            key="compare"
-            className="w-full max-w-6xl mx-auto h-full flex flex-col md:flex-row items-center justify-center gap-8 md:gap-12"
-            variants={screenVariants}
-            initial="initial"
-            animate="animate"
-            exit="exit"
-            transition={{ duration: 0.4, ease: 'easeInOut' }}
+          key="compare"
+          className="w-full max-w-6xl mx-auto h-full flex flex-col md:flex-row items-center justify-center gap-8 md:gap-12"
+          variants={screenVariants}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          transition={{ duration: 0.4, ease: 'easeInOut' }}
         >
-            {/* ... A képernyő tartalma itt változatlan ... */}
-            {/* Az eredeti Compare komponenst egy sima kép helyettesíti */}
-             <div className="md:w-1/2 w-full flex items-center justify-center">
-                 <div className={`relative rounded-1.25rem transition-all duration-700 ease-in-out ${isGenerating ? 'border border-gray-300 animate-pulse' : 'border border-transparent'}`}>
-                    {generatedModelUrl ? (
-                        <img src={generatedModelUrl} alt="Generált modell" className="w-[280px] h-[420px] sm:w-[320px] sm:h-[480px] lg:w-[400px] lg:h-[600px] rounded-2xl bg-gray-200" />
-                    ) : (
-                        <img src={userImageUrl} alt="Feltöltött kép" className="w-[280px] h-[420px] sm:w-[320px] sm:h-[480px] lg:w-[400px] lg:h-[600px] rounded-2xl bg-gray-200" />
-                    )}
-                </div>
+          <div className="md:w-1/2 w-full flex items-center justify-center">
+            <div className={`relative rounded-1.25rem transition-all duration-700 ease-in-out ${isGenerating ? 'border border-gray-300 animate-pulse' : 'border border-transparent'}`}>
+              {generatedModelUrl ? (
+                <img src={generatedModelUrl} alt="Generált modell" className="w-[280px] h-[420px] sm:w-[320px] sm:h-[480px] lg:w-[400px] lg:h-[600px] rounded-2xl bg-gray-200" />
+              ) : (
+                <img src={userImageUrl} alt="Feltöltött kép" className="w-[280px] h-[420px] sm:w-[320px] sm:h-[480px] lg:w-[400px] lg:h-[600px] rounded-2xl bg-gray-200" />
+              )}
             </div>
+          </div>
         </motion.div>
       )}
     </AnimatePresence>
