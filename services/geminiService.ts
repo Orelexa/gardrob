@@ -6,6 +6,25 @@ import { GoogleGenAI, Modality, HarmCategory, HarmBlockThreshold } from "@google
 import type { WardrobeItem } from '../types.ts';
 import { imageUrlToDataUrl, fileToDataUrl } from '../lib/utils.ts';
 
+const safetySettings = [
+    {
+        category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+        threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+    },
+    {
+        category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+        threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+    },
+    {
+        category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+        threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+    },
+    {
+        category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+        threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+    },
+];
+
 // This function is defined within the module scope so it's only created once.
 const getClient = (() => {
     let client: GoogleGenAI | null = null;
@@ -39,26 +58,6 @@ const fileToGenerativePart = async (file: File) => {
     };
 };
 
-// FIX: The `safetySettings` property must be a top-level property in the `generateContent` call, not nested within the `config` object.
-const safetySettings = [
-    {
-        category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-        threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-    },
-    {
-        category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-        threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-    },
-    {
-        category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-        threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-    },
-    {
-        category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-        threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-    },
-];
-
 
 /**
  * Generates a photorealistic model image from a user-uploaded photo.
@@ -71,13 +70,13 @@ export const generateModelImage = async (userImageFile: File): Promise<string> =
         text: `From the provided image of a person, generate a full-body, photorealistic virtual model. The model should be standing in a standard A-pose against a clean, plain, off-white studio background. They should be wearing neutral, simple, tight-fitting gray clothes (like a tank top and leggings) to clearly show their body shape. Ensure the lighting is even and soft, avoiding harsh shadows. The final image must be high-resolution and suitable for a virtual try-on application. Do not include any text, logos, or watermarks. The output must only be the image.`
     };
 
-    // FIX: Moved `safetySettings` to be a top-level property, outside of `config`.
+    // FIX: Pass `safetySettings` inside the `config` object in the `generateContent` call.
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash-image-preview',
         contents: { parts: [userImagePart, textPart] },
-        safetySettings,
         config: {
             responseModalities: [Modality.IMAGE, Modality.TEXT],
+            safetySettings,
         },
     });
 
@@ -121,13 +120,13 @@ export const generateVirtualTryOnImage = async (modelImageDataUrl: string, garme
         text: `Virtually try this garment on the model. Ensure the garment fits realistically, accounting for drape, folds, and lighting. Maintain the model's appearance and the background. The output should only be the image of the model wearing the garment.`
     };
     
-    // FIX: Moved `safetySettings` to be a top-level property, outside of `config`.
+    // FIX: Pass `safetySettings` inside the `config` object in the `generateContent` call.
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash-image-preview',
         contents: { parts: [modelImagePart, garmentImagePart, textPart] },
-        safetySettings,
         config: {
             responseModalities: [Modality.IMAGE, Modality.TEXT],
+            safetySettings,
         },
     });
 
@@ -169,13 +168,13 @@ export const generatePoseVariation = async (baseModelDataUrl: string, lastGarmen
         text: `Take the provided base model and the garment, and render the model wearing the garment in the following pose: "${poseInstruction}". Ensure the fit and drape are realistic for the new pose. The background must remain a plain, off-white studio background.`
     };
 
-    // FIX: Moved `safetySettings` to be a top-level property, outside of `config`.
+    // FIX: Pass `safetySettings` inside the `config` object in the `generateContent` call.
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash-image-preview',
         contents: { parts: [baseModelPart, garmentPart, textPart] },
-        safetySettings,
         config: {
             responseModalities: [Modality.IMAGE, Modality.TEXT],
+            safetySettings,
         },
     });
 
