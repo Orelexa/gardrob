@@ -7,7 +7,6 @@ export const generateVirtualTryOnImage = async (
 ): Promise<string> => {
   console.log("onProgress típusa:", typeof onProgress);
   try {
-    // Ha onProgress függvény, akkor hívjuk 0.1-el
     if (typeof onProgress === "function") onProgress(0.1);
 
     const response = await fetch("/api/gemini-proxy", {
@@ -16,7 +15,6 @@ export const generateVirtualTryOnImage = async (
       body: JSON.stringify({ modelImageUrl, garmentImageUrl }),
     });
 
-    // Ha onProgress függvény, akkor hívjuk 0.8-cal
     if (typeof onProgress === "function") onProgress(0.8);
 
     if (!response.ok) {
@@ -30,7 +28,6 @@ export const generateVirtualTryOnImage = async (
 
     const data = await response.json();
 
-    // Ha onProgress függvény, akkor hívjuk 1-gyel
     if (typeof onProgress === "function") onProgress(1);
 
     if (!data.imageUrl) {
