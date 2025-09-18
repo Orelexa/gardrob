@@ -4,7 +4,7 @@ import { UploadCloudIcon, CheckCircleIcon } from './icons';
 import Spinner from './Spinner';
 import { generateVirtualTryOnImage } from '../services/geminiService';
 
-// Debug sor a függvény ellenőrzéséhez
+// Debug sor a függvény import ellenőrzéséhez
 console.log('generateVirtualTryOnImage:', generateVirtualTryOnImage);
 
 import { getFriendlyErrorMessage } from '../lib/utils';
@@ -73,9 +73,13 @@ const StartScreen: React.FC<StartScreenProps> = ({ onModelFinalized }) => {
       setGeneratedModelUrl(null);
       setError(null);
       try {
+        // Debug a hívás előtt
+        console.log('generateVirtualTryOnImage típus:', typeof generateVirtualTryOnImage);
         const result = await generateVirtualTryOnImage(dataUrl, '');
+        console.log('generateVirtualTryOnImage eredmény:', result);
         setGeneratedModelUrl(result);
       } catch (err) {
+        console.error('generateVirtualTryOnImage hívási hiba:', err);
         setError(getFriendlyErrorMessage(err, 'Nem sikerült a modell létrehozása.'));
         setUserImageUrl(null);
       } finally {
