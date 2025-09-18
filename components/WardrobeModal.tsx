@@ -7,6 +7,7 @@ import type { WardrobeItem } from '../types.ts';
 import { UploadCloudIcon, CheckCircleIcon, XIcon, Trash2Icon, DotsVerticalIcon } from './icons.tsx';
 import { AnimatePresence, motion } from 'framer-motion';
 import Spinner from './Spinner.tsx';
+import { resizeImage } from '../lib/utils.ts';
 
 interface WardrobeModalProps {
   isOpen: boolean;
@@ -43,6 +44,7 @@ const WardrobeModal: React.FC<WardrobeModalProps> = ({ isOpen, onClose, onGarmen
     const [isUploading, setIsUploading] = useState(false);
     const [activeCategory, setActiveCategory] = useState('Összes');
     const [editingItemId, setEditingItemId] = useState<string | null>(null);
+    const [isDragging, setIsDragging] = useState(false);
 
     const filteredWardrobe = useMemo(() => {
         if (activeCategory === 'Összes') {
@@ -65,26 +67,56 @@ const WardrobeModal: React.FC<WardrobeModalProps> = ({ isOpen, onClose, onGarmen
             setError('Nem sikerült betölteni a ruhadarabot. Kérjük, próbáld újra.');
         }
     };
+    
+    const uploadFile = async (file: File) => {
+        if (!file.type.startsWith('image/')) {
+            setError('Kérjük, válassz egy képfájlt.');
+            return;
+        }
+        setIsUploading(true);
+        setError(null);
+        
+        try {
+            const resizedFile = await resizeImage(file, 512);
+            const newGarmentCategory = activeCategory === 'Összes' ? 'Nem kategorizált' : activeCategory;
+            await onGarmentAdd(resizedFile, newGarmentCategory);
+            setActiveCategory(newGarmentCategory);
+        } catch (err) {
+            setError('Hiba a fájl feltöltése közben.');
+            console.error(err);
+        } finally {
+            setIsUploading(false);
+        }
+    }
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
-            const file = e.target.files[0];
-            if (!file.type.startsWith('image/')) {
-                setError('Kérjük, válassz egy képfájlt.');
-                return;
-            }
-            setIsUploading(true);
-            setError(null);
-            
-            const newGarmentCategory = activeCategory === 'Összes' ? 'Nem kategorizált' : activeCategory;
-
-            await onGarmentAdd(file, newGarmentCategory);
-            
-            setIsUploading(false);
+            await uploadFile(e.target.files[0]);
             e.target.value = ''; // Reset file input
-
-            // Switch view to the category where the new item was added
-            setActiveCategory(newGarmentCategory);
+        }
+    };
+    
+    const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(true);
+    };
+    const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+    };
+    const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+    };
+    const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            await uploadFile(e.dataTransfer.files[0]);
+            e.dataTransfer.clearData();
         }
     };
     
@@ -116,7 +148,27 @@ const WardrobeModal: React.FC<WardrobeModalProps> = ({ isOpen, onClose, onGarmen
                     exit={{ scale: 0.95, y: 20 }}
                     onClick={(e) => e.stopPropagation()}
                     className="relative bg-white rounded-2xl w-full max-w-3xl max-h-[85vh] flex flex-col shadow-xl"
+                    onDrop={handleDrop}
+                    onDragOver={handleDragOver}
+                    onDragEnter={handleDragEnter}
+                    onDragLeave={handleDragLeave}
                 >
+                    <AnimatePresence>
+                        {isDragging && (
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="absolute inset-0 bg-gray-900/70 backdrop-blur-sm z-30 flex items-center justify-center pointer-events-none rounded-2xl"
+                            >
+                                <div className="border-4 border-dashed border-white rounded-2xl p-12 text-center">
+                                    <UploadCloudIcon className="w-12 h-12 text-white mx-auto" />
+                                    <p className="mt-4 text-xl font-semibold text-white">Húzd ide a ruhadarabot</p>
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
                     <div className="flex items-center justify-between p-4 border-b">
                         <h2 className="text-2xl font-serif tracking-wider text-gray-800">Gardrób</h2>
                         <button onClick={onClose} className="p-1 rounded-full text-gray-500 hover:bg-gray-100 hover:text-gray-800">

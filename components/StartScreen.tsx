@@ -9,7 +9,7 @@ import { UploadCloudIcon, CheckCircleIcon } from './icons.tsx';
 import { Compare } from './ui/compare.tsx';
 import { generateModelImage } from '../services/geminiService.ts';
 import Spinner from './Spinner.tsx';
-import { getFriendlyErrorMessage } from '../lib/utils.ts';
+import { getFriendlyErrorMessage, resizeImage } from '../lib/utils.ts';
 
 interface StartScreenProps {
   onModelFinalized: (name: string, modelUrl: string) => Promise<void>;
@@ -85,6 +85,7 @@ const StartScreen: React.FC<StartScreenProps> = ({ onModelFinalized, initialFile
   const [generatedModelUrl, setGeneratedModelUrl] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   const handleFileSelect = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) {
@@ -92,24 +93,33 @@ const StartScreen: React.FC<StartScreenProps> = ({ onModelFinalized, initialFile
         return;
     }
 
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-        const dataUrl = e.target?.result as string;
-        setUserImageUrl(dataUrl);
-        setIsGenerating(true);
-        setGeneratedModelUrl(null);
-        setError(null);
-        try {
-            const result = await generateModelImage(file);
-            setGeneratedModelUrl(result);
-        } catch (err) {
-            setError(getFriendlyErrorMessage(err, 'Nem sikerült a modell létrehozása'));
-            setUserImageUrl(null);
-        } finally {
-            setIsGenerating(false);
-        }
-    };
-    reader.readAsDataURL(file);
+    setIsGenerating(true);
+    setGeneratedModelUrl(null);
+    setError(null);
+
+    try {
+        const resizedFile = await resizeImage(file, 1024);
+        
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            const dataUrl = e.target?.result as string;
+            setUserImageUrl(dataUrl);
+            try {
+                const result = await generateModelImage(resizedFile);
+                setGeneratedModelUrl(result);
+            } catch (err) {
+                 setError(getFriendlyErrorMessage(err, 'Nem sikerült a modell létrehozása'));
+                 setUserImageUrl(null);
+            } finally {
+                setIsGenerating(false);
+            }
+        };
+        reader.readAsDataURL(resizedFile);
+
+    } catch (resizeError) {
+        setError(getFriendlyErrorMessage(resizeError, 'Hiba a kép előfeldolgozása közben.'));
+        setIsGenerating(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -122,6 +132,30 @@ const StartScreen: React.FC<StartScreenProps> = ({ onModelFinalized, initialFile
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       handleFileSelect(e.target.files[0]);
+    }
+  };
+  
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleFileSelect(e.dataTransfer.files[0]);
+      e.dataTransfer.clearData();
     }
   };
 
@@ -149,13 +183,25 @@ const StartScreen: React.FC<StartScreenProps> = ({ onModelFinalized, initialFile
       {!userImageUrl ? (
         <motion.div
           key="uploader"
-          className="w-full max-w-7xl mx-auto flex flex-col lg:flex-row items-center justify-center gap-8 lg:gap-12"
+          className="w-full max-w-7xl mx-auto flex flex-col lg:flex-row items-center justify-center gap-8 lg:gap-12 relative"
           variants={screenVariants}
           initial="initial"
           animate="animate"
           exit="exit"
           transition={{ duration: 0.4, ease: "easeInOut" }}
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
         >
+          {isDragging && (
+            <div className="absolute inset-0 bg-gray-900/50 backdrop-blur-sm z-50 flex items-center justify-center pointer-events-none rounded-2xl">
+              <div className="border-4 border-dashed border-white rounded-2xl p-12 text-center">
+                <UploadCloudIcon className="w-16 h-16 text-white mx-auto" />
+                <p className="mt-4 text-2xl font-semibold text-white">Húzd ide a fotót a feltöltéshez</p>
+              </div>
+            </div>
+          )}
           <div className="lg:w-1/2 flex flex-col items-center lg:items-start text-center lg:text-left">
             <div className="max-w-lg">
               <h1 className="text-5xl md:text-6xl font-serif font-bold text-gray-900 leading-tight">
@@ -171,7 +217,7 @@ const StartScreen: React.FC<StartScreenProps> = ({ onModelFinalized, initialFile
                   Fotó feltöltése
                 </label>
                 <input id="image-upload-start" type="file" className="hidden" accept="image/png, image/jpeg, image/webp, image/avif, image/heic, image/heif" onChange={handleFileChange} />
-                <p className="text-gray-500 text-sm">Válassz egy tiszta, egész alakos fotót. Csak arcképek is működnek, de a legjobb eredmény érdekében az egész alakos fotó javasolt.</p>
+                <p className="text-gray-500 text-sm">Vagy egyszerűen húzd ide a képfájlt. A legjobb eredmény érdekében egész alakos fotót használj.</p>
                 <p className="text-gray-500 text-xs mt-1">A feltöltéssel elfogadod, hogy nem hozol létre káros, explicit vagy jogellenes tartalmat. Ezt a szolgáltatást csak kreatív és felelősségteljes célokra szabad használni.</p>
                 {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
               </div>
@@ -209,7 +255,7 @@ const StartScreen: React.FC<StartScreenProps> = ({ onModelFinalized, initialFile
             {isGenerating && (
               <div className="flex items-center gap-3 text-lg text-gray-700 font-serif mt-6">
                 <Spinner />
-                <span>Modell generálása...</span>
+                <span>Az MI készíti a digitális modelledet...</span>
               </div>
             )}
 

@@ -139,18 +139,16 @@ const App: React.FC = () => {
     if (appState.view !== 'dressing_room') return;
     setIsWardrobeOpen(false);
     setIsLoading(true);
-    setLoadingMessage(`A(z) ${garmentInfo.name} felpróbálása...`);
+    setLoadingMessage(`A(z) ${garmentInfo.name} előkészítése...`);
     
     try {
       const baseImage = outfitHistory[outfitHistory.length - 1].imageUrl;
       
-      // OPTIMIZATION: If the base image is already a Data URL, use it directly.
-      // Otherwise, fetch and convert the remote URL. This prevents a slow,
-      // unnecessary proxy call for subsequent garment additions.
       const baseImageAsDataUrl = baseImage.startsWith('data:')
           ? baseImage
           : await imageUrlToDataUrl(baseImage);
-  
+      
+      setLoadingMessage(`Most próbáljuk fel: ${garmentInfo.name}...`);
       const newImageUrl = await generateVirtualTryOnImage(baseImageAsDataUrl, garmentFile);
       const newLayer: OutfitLayer = { garment: garmentInfo, imageUrl: newImageUrl };
       setOutfitHistory(prev => [...prev, newLayer]);
@@ -200,19 +198,17 @@ const App: React.FC = () => {
     if (poseVariations[index]) return; // Already generated
 
     setIsLoading(true);
-    setLoadingMessage('Új póz generálása...');
+    setLoadingMessage('A modell felkészül az új pózra...');
     
     try {
       const baseImage = outfitHistory[outfitHistory.length - 1].imageUrl;
       
-      // OPTIMIZATION: If the base image is already a Data URL, use it directly.
-      // This prevents a slow proxy call when generating poses for an outfit
-      // that has already been modified by the AI.
       const baseImageAsDataUrl = baseImage.startsWith('data:')
           ? baseImage
           : await imageUrlToDataUrl(baseImage);
 
       const instruction = POSE_INSTRUCTIONS[index];
+      setLoadingMessage(`"${instruction}" póz generálása...`);
       
       const newImageUrl = await generatePoseVariation(baseImageAsDataUrl, instruction);
       setPoseVariations(prev => ({ ...prev, [index]: newImageUrl }));
