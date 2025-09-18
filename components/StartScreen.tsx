@@ -9,7 +9,7 @@ import { UploadCloudIcon, CheckCircleIcon } from './icons.tsx';
 import { Compare } from './ui/compare.tsx';
 import { generateModelImage } from '../services/geminiService.ts';
 import Spinner from './Spinner.tsx';
-import { getFriendlyErrorMessage, resizeImage } from '../lib/utils.ts';
+import { getFriendlyErrorMessage, resizeImage, resizeImageDataUrl } from '../lib/utils.ts';
 
 interface StartScreenProps {
   onModelFinalized: (name: string, modelUrl: string) => Promise<void>;
@@ -106,7 +106,8 @@ const StartScreen: React.FC<StartScreenProps> = ({ onModelFinalized, initialFile
             setUserImageUrl(dataUrl);
             try {
                 const result = await generateModelImage(resizedFile);
-                setGeneratedModelUrl(result);
+                const finalModelUrl = await resizeImageDataUrl(result, 1024);
+                setGeneratedModelUrl(finalModelUrl);
             } catch (err) {
                  setError(getFriendlyErrorMessage(err, 'Nem sikerült a modell létrehozása'));
                  setUserImageUrl(null);
@@ -255,7 +256,7 @@ const StartScreen: React.FC<StartScreenProps> = ({ onModelFinalized, initialFile
             {isGenerating && (
               <div className="flex items-center gap-3 text-lg text-gray-700 font-serif mt-6">
                 <Spinner />
-                <span>Az MI készíti a digitális modelledet...</span>
+                <span>Az MI készíti a digitális modelledet... Kis türelmet!</span>
               </div>
             )}
 

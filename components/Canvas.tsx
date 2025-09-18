@@ -33,7 +33,7 @@ const Canvas: React.FC<CanvasProps> = ({ displayImageUrl, onStartOver, isLoading
   };
   
   return (
-    <div className="w-full h-full flex items-center justify-center p-4 relative animate-zoom-in group">
+    <div className="w-full h-full flex items-center justify-center relative animate-zoom-in group">
       {/* Start Over Button */}
       <button 
           onClick={onStartOver}

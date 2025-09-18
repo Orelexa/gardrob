@@ -22,7 +22,7 @@ import DebugModal from './components/DebugModal.tsx';
 import Spinner from './components/Spinner.tsx';
 import { SaveIcon, LibraryIcon } from './components/icons.tsx';
 import { generateVirtualTryOnImage, generatePoseVariation } from './services/geminiService.ts';
-import { getFriendlyErrorMessage, imageUrlToDataUrl } from './lib/utils.ts';
+import { getFriendlyErrorMessage, imageUrlToDataUrl, resizeImageDataUrl } from './lib/utils.ts';
 import { defaultWardrobe } from './wardrobe.ts';
 
 type AppState =
@@ -149,7 +149,9 @@ const App: React.FC = () => {
           : await imageUrlToDataUrl(baseImage);
       
       setLoadingMessage(`Most próbáljuk fel: ${garmentInfo.name}...`);
-      const newImageUrl = await generateVirtualTryOnImage(baseImageAsDataUrl, garmentFile);
+      const rawImageUrl = await generateVirtualTryOnImage(baseImageAsDataUrl, garmentFile);
+      setLoadingMessage('Kép optimalizálása...');
+      const newImageUrl = await resizeImageDataUrl(rawImageUrl, 1024);
       const newLayer: OutfitLayer = { garment: garmentInfo, imageUrl: newImageUrl };
       setOutfitHistory(prev => [...prev, newLayer]);
       setCurrentPoseIndex(0);
@@ -210,7 +212,9 @@ const App: React.FC = () => {
       const instruction = POSE_INSTRUCTIONS[index];
       setLoadingMessage(`"${instruction}" póz generálása...`);
       
-      const newImageUrl = await generatePoseVariation(baseImageAsDataUrl, instruction);
+      const rawImageUrl = await generatePoseVariation(baseImageAsDataUrl, instruction);
+      setLoadingMessage('Póz optimalizálása...');
+      const newImageUrl = await resizeImageDataUrl(rawImageUrl, 1024);
       setPoseVariations(prev => ({ ...prev, [index]: newImageUrl }));
     } catch (err) {
       alert(`Hiba a póz generálásakor: ${getFriendlyErrorMessage(err)}`);
@@ -307,7 +311,7 @@ const App: React.FC = () => {
         const activeGarmentIds = outfitHistory.map(l => l.garment?.id).filter(Boolean) as string[];
         const displayImageUrl = poseVariations[currentPoseIndex] || outfitHistory[outfitHistory.length - 1]?.imageUrl;
         return (
-          <div className="w-full h-full flex flex-col md:flex-row gap-4 p-4 flex-grow">
+          <div className="w-full h-full flex flex-col md:flex-row gap-4 p-4">
             <main className="flex-grow h-full md:w-3/5">
               <Canvas 
                 displayImageUrl={displayImageUrl}
@@ -319,7 +323,7 @@ const App: React.FC = () => {
                 currentPoseIndex={currentPoseIndex}
               />
             </main>
-            <aside className="w-full md:w-2/5 md:max-w-sm flex-shrink-0 bg-gray-100/60 p-4 rounded-lg flex flex-col gap-6">
+            <aside className="w-full md:w-2/5 md:max-w-sm flex-shrink-0 bg-gray-100/60 p-4 rounded-lg flex flex-col gap-6 overflow-y-auto">
                 <CurrentOutfitPanel 
                     outfitHistory={outfitHistory} 
                     onRemoveLastGarment={handleRemoveLastGarment}
@@ -368,9 +372,9 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-50 font-sans antialiased">
+    <div className="flex flex-col h-screen bg-gray-50 font-sans antialiased">
         {appState.view !== 'auth' && <Header />}
-        <div className="flex-grow flex items-center justify-center w-full">
+        <div className="flex-grow flex w-full overflow-hidden">
             {renderContent()}
         </div>
         <Footer isOnDressingScreen={appState.view === 'dressing_room'} />
