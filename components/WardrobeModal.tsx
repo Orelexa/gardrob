@@ -12,7 +12,7 @@ import { resizeImage } from '../lib/utils.ts';
 interface WardrobeModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onGarmentSelect: (garmentFile: File, garmentInfo: WardrobeItem) => void;
+  onGarmentSelect: (garmentInfo: WardrobeItem) => void;
   onGarmentAdd: (garmentFile: File, category: string) => Promise<void>;
   onGarmentDelete: (garmentId: string) => void;
   onGarmentUpdate: (garment: WardrobeItem) => void;
@@ -23,20 +23,6 @@ interface WardrobeModalProps {
 
 const CATEGORIES = ['Összes', 'Felsők', 'Nadrágok', 'Ruhák', 'Felsőruházat', 'Lábbelik', 'Tréning', 'Kiegészítők', 'Nem kategorizált'];
 const EDITABLE_CATEGORIES = CATEGORIES.filter(c => c !== 'Összes');
-
-// Helper to convert image URL to a File object
-const urlToFile = async (url: string, filename: string): Promise<File> => {
-    // FIX: Use a CORS proxy to fetch images. This is necessary because fetching directly 
-    // from Firebase Storage is blocked by CORS policy, which caused the "add garment" feature to fail for user-uploaded items.
-    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-    const response = await fetch(proxyUrl);
-    if (!response.ok) {
-        throw new Error(`Failed to fetch image via proxy: ${response.statusText}`);
-    }
-    const blob = await response.blob();
-    const mimeType = blob.type;
-    return new File([blob], filename, { type: mimeType });
-};
 
 const WardrobeModal: React.FC<WardrobeModalProps> = ({ isOpen, onClose, onGarmentSelect, onGarmentAdd, onGarmentDelete, onGarmentUpdate, wardrobe, activeGarmentIds, isLoading }) => {
     const [error, setError] = useState<string | null>(null);
@@ -56,16 +42,15 @@ const WardrobeModal: React.FC<WardrobeModalProps> = ({ isOpen, onClose, onGarmen
         return wardrobe.filter(item => item.category === activeCategory);
     }, [wardrobe, activeCategory]);
 
-    const handleGarmentClick = async (item: WardrobeItem) => {
+    const handleGarmentClick = (item: WardrobeItem) => {
         if (isLoading || activeGarmentIds.includes(item.id)) return;
-        setError(null);
-        try {
-            const file = await urlToFile(item.url, `${item.id}.png`);
-            onGarmentSelect(file, item);
-        } catch (err) {
-            console.error(err); // Log the actual error for debugging
-            setError('Nem sikerült betölteni a ruhadarabot. Kérjük, próbáld újra.');
+        if (!item.dataUrl) {
+            setError('A ruhadarab még nem áll készen. Kérjük, próbáld újra egy pillanat múlva.');
+            console.warn('Attempted to select a garment without a pre-fetched dataUrl:', item);
+            return;
         }
+        setError(null);
+        onGarmentSelect(item);
     };
     
     const uploadFile = async (file: File) => {

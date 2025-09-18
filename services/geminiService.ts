@@ -103,9 +103,9 @@ export const generateModelImage = async (userImage: File): Promise<string> => {
     return handleApiResponse(response);
 };
 
-export const generateVirtualTryOnImage = async (modelImageUrl: string, garmentImage: File): Promise<string> => {
+export const generateVirtualTryOnImage = async (modelImageUrl: string, garmentDataUrl: string): Promise<string> => {
     const modelImagePart = dataUrlToPart(modelImageUrl);
-    const garmentImagePart = await fileToPart(garmentImage);
+    const garmentImagePart = dataUrlToPart(garmentDataUrl);
     const prompt = `You are an expert virtual try-on AI. Your task is to realistically place a new clothing item onto the person in the base image.
 
 **Context:** You will be given two images.

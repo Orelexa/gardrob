@@ -52,6 +52,7 @@ const App: React.FC = () => {
   const [poseVariations, setPoseVariations] = useState<Record<number, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
+  const [isPreparingData, setIsPreparingData] = useState(false);
   
   // Modals State
   const [isWardrobeOpen, setIsWardrobeOpen] = useState(false);
@@ -59,7 +60,8 @@ const App: React.FC = () => {
   const [isDebugOpen, setIsDebugOpen] = useState(false);
 
   // Data State
-  const [wardrobe, setWardrobe] = useState<WardrobeItem[]>([...defaultWardrobe]);
+  const [wardrobe, setWardrobe] = useState<WardrobeItem[]>([]);
+  const [preparedWardrobe, setPreparedWardrobe] = useState<WardrobeItem[]>([]);
   const [savedOutfits, setSavedOutfits] = useState<SavedOutfit[]>([]);
 
 
@@ -81,20 +83,46 @@ const App: React.FC = () => {
     setAppState({ view: 'auth' });
   };
   
-  // --- Data Fetching ---
+  // --- Data Fetching & Preparation ---
   useEffect(() => {
-      if (appState.view === 'dressing_room' || appState.view === 'model_selection') {
-          const fetchUserData = async () => {
-              const [userWardrobe, userOutfits] = await Promise.all([
-                  storage.getWardrobeForUser(appState.userId),
-                  storage.getSavedOutfitsForUser(appState.userId)
-              ]);
-              setWardrobe([...defaultWardrobe, ...userWardrobe]);
-              setSavedOutfits(userOutfits);
+      if (appState.view === 'dressing_room') {
+          const fetchAndPrepareData = async () => {
+              setIsPreparingData(true);
+              setLoadingMessage('Felhasználói adatok betöltése...');
+              try {
+                  const [userWardrobe, userOutfits] = await Promise.all([
+                      storage.getWardrobeForUser(appState.userId),
+                      storage.getSavedOutfitsForUser(appState.userId)
+                  ]);
+                  
+                  const fullWardrobe = [...defaultWardrobe, ...userWardrobe];
+                  setWardrobe(fullWardrobe);
+                  setSavedOutfits(userOutfits);
+
+                  setLoadingMessage('Gardrób előkészítése...');
+                  const preparedItems = await Promise.all(
+                      fullWardrobe.map(async (item) => {
+                          try {
+                              const dataUrl = await imageUrlToDataUrl(item.url);
+                              return { ...item, dataUrl };
+                          } catch (e) {
+                              console.warn(`Nem sikerült előkészíteni a ruhadarabot: ${item.name}`, e);
+                              return item; // Visszaadjuk az eredeti elemet, ha a betöltés sikertelen
+                          }
+                      })
+                  );
+                  setPreparedWardrobe(preparedItems);
+              } catch (err) {
+                  alert(`Hiba a felhasználói adatok betöltésekor: ${getFriendlyErrorMessage(err)}`);
+              } finally {
+                  setIsPreparingData(false);
+                  setLoadingMessage('');
+              }
           };
-          fetchUserData();
+          fetchAndPrepareData();
       }
-  }, [appState]);
+  // FIX: Safely access `userId` for the dependency array. `appState` might not have `userId` in all states, causing a TypeScript error.
+  }, [appState.view, 'userId' in appState ? appState.userId : null]);
 
   // --- Debug Key Combination ---
   useEffect(() => {
@@ -149,17 +177,21 @@ const App: React.FC = () => {
     }
   };
 
-  const handleAddGarment = async (garmentFile: File, garmentInfo: WardrobeItem) => {
-    if (appState.view !== 'dressing_room') return;
+  const handleAddGarment = async (garmentInfo: WardrobeItem) => {
+    if (appState.view !== 'dressing_room' || !garmentInfo.dataUrl) {
+      if (!garmentInfo.dataUrl) {
+        alert('Hiba: A ruhadarab képe nem lett megfelelően betöltve. Próbáld újra.');
+      }
+      return;
+    }
     setIsWardrobeOpen(false);
     setIsLoading(true);
-    setLoadingMessage(`A(z) ${garmentInfo.name} előkészítése...`);
+    setLoadingMessage(`Most próbáljuk fel: ${garmentInfo.name}...`);
     
     try {
       const baseImageAsDataUrl = outfitHistory[outfitHistory.length - 1].imageUrl;
       
-      setLoadingMessage(`Most próbáljuk fel: ${garmentInfo.name}...`);
-      const rawImageUrl = await generateVirtualTryOnImage(baseImageAsDataUrl, garmentFile);
+      const rawImageUrl = await generateVirtualTryOnImage(baseImageAsDataUrl, garmentInfo.dataUrl);
       setLoadingMessage('Kép optimalizálása...');
       const newImageUrl = await resizeImageDataUrl(rawImageUrl, 1024);
       const newLayer: OutfitLayer = { garment: garmentInfo, imageUrl: newImageUrl };
@@ -176,9 +208,19 @@ const App: React.FC = () => {
   };
   
   const handleGarmentAdd = async (garmentFile: File, category: string) => {
-      if (appState.view !== 'dressing_room') return;
-      const newGarment = await storage.addGarmentToUserWardrobe(appState.userId, garmentFile, category);
+    if (appState.view !== 'dressing_room') return;
+    const newGarment = await storage.addGarmentToUserWardrobe(appState.userId, garmentFile, category);
+    try {
+      const dataUrl = await imageUrlToDataUrl(newGarment.url);
+      const preparedNewGarment = { ...newGarment, dataUrl };
       setWardrobe(prev => [...prev, newGarment]);
+      setPreparedWardrobe(prev => [...prev, preparedNewGarment]);
+    } catch(e) {
+      console.error("Nem sikerült előkészíteni az újonnan hozzáadott ruhadarabot", e);
+      // Add it anyway, so it appears in the list, even if it might fail on click
+      setWardrobe(prev => [...prev, newGarment]);
+      setPreparedWardrobe(prev => [...prev, newGarment]);
+    }
   };
   
   const handleGarmentDelete = async (garmentId: string) => {
@@ -187,6 +229,7 @@ const App: React.FC = () => {
       if (garmentToDelete) {
           await storage.deleteGarmentFromUserWardrobe(appState.userId, garmentToDelete);
           setWardrobe(prev => prev.filter(g => g.id !== garmentId));
+          setPreparedWardrobe(prev => prev.filter(g => g.id !== garmentId));
       }
   };
     
@@ -194,6 +237,7 @@ const App: React.FC = () => {
       if (appState.view !== 'dressing_room' || !garment.category) return;
       await storage.updateGarmentInCategory(appState.userId, garment.id, garment.category);
       setWardrobe(prev => prev.map(g => g.id === garment.id ? garment : g));
+      setPreparedWardrobe(prev => prev.map(g => g.id === garment.id ? garment : g));
   }
 
   const handleRemoveLastGarment = () => {
@@ -327,7 +371,13 @@ const App: React.FC = () => {
         const activeGarmentIds = outfitHistory.map(l => l.garment?.id).filter(Boolean) as string[];
         const displayImageUrl = poseVariations[currentPoseIndex] || outfitHistory[outfitHistory.length - 1]?.imageUrl;
         return (
-          <div className="w-full h-full flex flex-col md:flex-row gap-4 p-4">
+          <div className="w-full h-full flex flex-col md:flex-row gap-4 p-4 relative">
+            {isPreparingData && (
+              <div className="absolute inset-0 bg-white/80 backdrop-blur-md flex flex-col items-center justify-center z-30 rounded-lg">
+                  <Spinner />
+                  <p className="text-lg font-serif text-gray-700 mt-4 text-center px-4">{loadingMessage}</p>
+              </div>
+            )}
             <main className="flex-grow h-full md:w-3/5">
               <Canvas 
                 displayImageUrl={displayImageUrl}
@@ -371,7 +421,7 @@ const App: React.FC = () => {
                 onGarmentAdd={handleGarmentAdd}
                 onGarmentDelete={handleGarmentDelete}
                 onGarmentUpdate={handleGarmentUpdate}
-                wardrobe={wardrobe}
+                wardrobe={preparedWardrobe}
                 activeGarmentIds={activeGarmentIds}
                 isLoading={isLoading}
             />

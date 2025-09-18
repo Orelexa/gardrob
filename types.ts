@@ -12,9 +12,10 @@ export interface UserModel {
 
 export interface WardrobeItem {
   id: string;
-  name: string;
+  name:string;
   url: string;
   category?: string; // e.g., 'Tops', 'Bottoms', 'Dresses'
+  dataUrl?: string; // For pre-fetched image data to speed up try-on
 }
 
 export interface OutfitLayer {
