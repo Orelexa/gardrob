@@ -3,10 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 import React, { useState, useMemo } from 'react';
-import type { WardrobeItem } from '../types';
-import { UploadCloudIcon, CheckCircleIcon, XIcon, Trash2Icon, DotsVerticalIcon } from './icons';
+import type { WardrobeItem } from '../types.ts';
+import { UploadCloudIcon, CheckCircleIcon, XIcon, Trash2Icon, DotsVerticalIcon } from './icons.tsx';
 import { AnimatePresence, motion } from 'framer-motion';
-import Spinner from './Spinner';
+import Spinner from './Spinner.tsx';
 
 interface WardrobeModalProps {
   isOpen: boolean;
@@ -25,39 +25,10 @@ const EDITABLE_CATEGORIES = CATEGORIES.filter(c => c !== 'Összes');
 
 // Helper to convert image URL to a File object
 const urlToFile = async (url: string, filename: string): Promise<File> => {
-    try {
-        console.log('🔄 Kép letöltése Firebase Storage-ból:', url);
-        
-        // Firebase Storage CORS probléma megkerülése
-        let fetchUrl = url;
-        
-        // Ha Firebase Storage URL, akkor módosítjuk a domain-t
-        if (url.includes('firebasestorage.googleapis.com')) {
-            fetchUrl = url.replace('firebasestorage.googleapis.com', 'storage.googleapis.com');
-        }
-        
-        const response = await fetch(fetchUrl, {
-            mode: 'cors',
-            credentials: 'omit',
-            headers: {
-                'Accept': 'image/*'
-            }
-        });
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        const blob = await response.blob();
-        const mimeType = blob.type || 'image/jpeg';
-        
-        console.log('✅ Kép sikeresen letöltve:', mimeType, `${(blob.size/1024).toFixed(1)}KB`);
-        return new File([blob], filename, { type: mimeType });
-        
-    } catch (error) {
-        console.error('❌ CORS/Letöltési hiba:', error);
-        throw new Error(`Nem sikerült letölteni a képet: ${error.message}`);
-    }
+    const response = await fetch(url);
+    const blob = await response.blob();
+    const mimeType = blob.type;
+    return new File([blob], filename, { type: mimeType });
 };
 
 const WardrobeModal: React.FC<WardrobeModalProps> = ({ isOpen, onClose, onGarmentSelect, onGarmentAdd, onGarmentDelete, onGarmentUpdate, wardrobe, activeGarmentIds, isLoading }) => {
@@ -78,22 +49,15 @@ const WardrobeModal: React.FC<WardrobeModalProps> = ({ isOpen, onClose, onGarmen
     }, [wardrobe, activeCategory]);
 
     const handleGarmentClick = async (item: WardrobeItem) => {
-    if (isLoading || activeGarmentIds.includes(item.id)) return;
-    setError(null);
-    try {
-        // CORS probléma megkerülése: dummy File objektum létrehozása
-        // A Gemini API közvetlenül dolgozik az URL-lel
-        const dummyBlob = new Blob(['dummy'], { type: 'image/jpeg' });
-        const file = new File([dummyBlob], `${item.id}.jpg`, { type: 'image/jpeg' });
-        
-        // URL hozzáadása a File objektumhoz custom property-ként
-        (file as any).firebaseUrl = item.url;
-        
-        onGarmentSelect(file, item);
-    } catch (err) {
-        setError('Nem sikerült betölteni a ruhadarabot...');
-    }
-};
+        if (isLoading || activeGarmentIds.includes(item.id)) return;
+        setError(null);
+        try {
+            const file = await urlToFile(item.url, `${item.id}.png`);
+            onGarmentSelect(file, item);
+        } catch (err) {
+            setError('Nem sikerült betölteni a ruhadarabot. Kérjük, próbáld újra.');
+        }
+    };
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {

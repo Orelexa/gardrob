@@ -3,9 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 import React, { useState } from 'react';
-import { defaultWardrobe } from '../wardrobe';
-import type { WardrobeItem } from '../types';
-import { UploadCloudIcon, CheckCircleIcon, XIcon } from './icons';
+// FIX: Add file extensions to import paths
+import { defaultWardrobe } from '../wardrobe.ts';
+import type { WardrobeItem } from '../types.ts';
+import { UploadCloudIcon, CheckCircleIcon, XIcon } from './icons.tsx';
 import { AnimatePresence, motion } from 'framer-motion';
 
 

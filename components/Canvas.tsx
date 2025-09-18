@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 import React, { useState } from 'react';
-import { RotateCcwIcon, ChevronLeftIcon, ChevronRightIcon } from './icons';
-import Spinner from './Spinner';
+import { RotateCcwIcon, ChevronLeftIcon, ChevronRightIcon } from './icons.tsx';
+import Spinner from './Spinner.tsx';
 import { AnimatePresence, motion } from 'framer-motion';
 
 interface CanvasProps {

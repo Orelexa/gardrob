@@ -4,8 +4,8 @@
 */
 
 import React from 'react';
-import { OutfitLayer } from '../types';
-import { Trash2Icon, PlusIcon } from './icons';
+import { OutfitLayer } from '../types.ts';
+import { Trash2Icon, PlusIcon } from './icons.tsx';
 
 interface OutfitStackProps {
   outfitHistory: OutfitLayer[];

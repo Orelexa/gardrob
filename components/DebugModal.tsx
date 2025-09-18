@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 import React, { useState, useEffect } from 'react';
-import { XIcon } from './icons';
+// FIX: Add file extension to import path
+import { XIcon } from './icons.tsx';
 import { AnimatePresence, motion } from 'framer-motion';
 
 interface DebugModalProps {

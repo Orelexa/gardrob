@@ -4,8 +4,9 @@
 */
 
 import React from 'react';
-import { OutfitLayer } from '../types';
-import { Trash2Icon } from './icons';
+// FIX: Add file extension to import paths
+import { OutfitLayer } from '../types.ts';
+import { Trash2Icon } from './icons.tsx';
 
 interface OutfitStackProps {
   outfitHistory: OutfitLayer[];

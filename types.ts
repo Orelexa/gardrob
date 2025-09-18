@@ -3,28 +3,29 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 
-export interface WardrobeItem {
-  id: string;
-  name: string;
-  url: string; // Can be a remote URL or a data URL for local items
-  category?: string;
-}
-
-export interface OutfitLayer {
-  garment: WardrobeItem | null; // null represents the base model layer
-  poseImages: Record<string, string>; // Maps pose instruction to image URL
-}
-
 export interface UserModel {
   id: string;
   name: string;
   imageUrl: string;
+  createdAt?: number;
 }
 
-// FIX: Added SavedOutfit interface to resolve missing type error.
+export interface WardrobeItem {
+  id: string;
+  name: string;
+  url: string;
+  category?: string; // e.g., 'Tops', 'Bottoms', 'Dresses'
+}
+
+export interface OutfitLayer {
+  garment: WardrobeItem | null; // null for the base model layer
+  imageUrl: string; // The URL of the image for this layer (e.g., model with garment on)
+}
+
 export interface SavedOutfit {
   id: string;
   name: string;
-  previewImageUrl: string;
-  createdAt: number;
+  createdAt: number; // timestamp
+  previewImageUrl: string; // URL of the final outfit image
+  layers: OutfitLayer[]; // The layers that make up the outfit
 }

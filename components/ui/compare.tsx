@@ -4,10 +4,13 @@
 */
 "use client";
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { SparklesCore } from "./sparkles";
+// FIX: Add file extension to local import for consistent module resolution.
+import { SparklesCore } from "./sparkles.tsx";
 import { AnimatePresence, motion } from "framer-motion";
-import { cn } from "../../lib/utils";
-import { DotsVerticalIcon } from "../icons";
+// FIX: Add file extension to local import for consistent module resolution.
+import { cn } from "../../lib/utils.ts";
+// FIX: Add file extension to local import for consistent module resolution.
+import { DotsVerticalIcon } from "../icons.tsx";
  
 interface CompareProps {
   firstImage?: string;

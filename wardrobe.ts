@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 
-import { WardrobeItem } from './types';
+// FIX: Add file extension to import path
+import { WardrobeItem } from './types.ts';
 
 // Default wardrobe items hosted for easy access
 export const defaultWardrobe: WardrobeItem[] = [

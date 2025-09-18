@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 import React from 'react';
-import Spinner from './Spinner';
+// FIX: Add file extension to import path
+import Spinner from './Spinner.tsx';
 
 interface LoadingOverlayProps {
   message: string;

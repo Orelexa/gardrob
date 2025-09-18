@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 import React from 'react';
-import type { SavedOutfit } from '../types';
-import { XIcon, Trash2Icon } from './icons';
+import type { SavedOutfit } from '../types.ts';
+import { XIcon, Trash2Icon } from './icons.tsx';
 import { AnimatePresence, motion } from 'framer-motion';
 
 interface SavedOutfitsModalProps {
