@@ -14,7 +14,7 @@ import {
   addDoc,
   updateDoc,
 } from 'firebase/firestore';
-import { ref, uploadString, getDownloadURL, deleteObject } from 'firebase/storage';
+import { ref, uploadString, getDownloadURL, deleteObject, uploadBytes } from 'firebase/storage';
 import { db, storage } from './firebase.ts';
 import type { UserModel, WardrobeItem, SavedOutfit, OutfitLayer } from '../types.ts';
 
@@ -73,7 +73,8 @@ export const getWardrobeForUser = async (userId: string): Promise<WardrobeItem[]
 export const addGarmentToUserWardrobe = async (userId: string, garmentFile: File, category: string): Promise<WardrobeItem> => {
     const imageRef = ref(storage, `users/${userId}/wardrobe/custom-${Date.now()}-${garmentFile.name}`);
     
-    await uploadString(imageRef, await fileToBase64(garmentFile), 'data_url');
+    // Use uploadBytes for direct file upload, which is much more efficient than base64.
+    await uploadBytes(imageRef, garmentFile);
     const imageUrl = await getDownloadURL(imageRef);
 
     const garmentDocRef = collection(db, 'users', userId, 'wardrobe');
@@ -149,13 +150,3 @@ export const deleteOutfitForUser = async (userId: string, outfit: SavedOutfit): 
     const outfitDocRef = doc(db, 'users', userId, 'outfits', outfit.id);
     await deleteDoc(outfitDocRef);
 };
-
-
-// --- Helper ---
-const fileToBase64 = (file: File): Promise<string> =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = (error) => reject(error);
-  });
