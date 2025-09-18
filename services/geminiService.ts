@@ -76,11 +76,11 @@ const model = 'gemini-2.5-flash-image-preview';
  */
 const getAiInstance = (): GoogleGenAI => {
     if (!aiInstance) {
-        const apiKey = process.env.API_KEY;
+        const apiKey = import.meta.env.VITE_API_KEY;
         if (!apiKey) {
             // This error will be thrown at runtime, inside an async function, so it can be caught.
             // The app itself will load properly.
-            throw new Error("A Gemini API kulcs (VITE_API_KEY) hiányzik. Ellenőrizd a .env fájlt, és indítsd újra a fejlesztői szervert.");
+            throw new Error("A Gemini API kulcs (VITE_API_KEY) hiányzik. Hozz létre egy .env.local fájlt, és add hozzá a kulcsot.");
         }
         aiInstance = new GoogleGenAI({ apiKey });
     }
@@ -106,15 +106,19 @@ export const generateModelImage = async (userImage: File): Promise<string> => {
 export const generateVirtualTryOnImage = async (modelImageUrl: string, garmentImage: File): Promise<string> => {
     const modelImagePart = dataUrlToPart(modelImageUrl);
     const garmentImagePart = await fileToPart(garmentImage);
-    const prompt = `You are an expert virtual try-on AI. Your ONLY task is to place the clothing from the 'garment image' onto the person in the 'model image'.
+    const prompt = `You are an expert virtual try-on AI. Your task is to realistically place a new clothing item onto the person in the base image.
 
-**Instructions:**
-1.  **IDENTIFY THE GARMENT:** The 'garment image' contains the ONLY piece of clothing you should add.
-2.  **IDENTIFY THE PERSON:** The 'model image' contains the person and the scene.
-3.  **COMBINE:** Create a new, photorealistic image where the person from the 'model image' is wearing the clothing from the 'garment image'.
-4.  **PERFECT FIT:** The garment must be realistically fitted to the person's body and pose, with natural folds, shadows, and lighting. The AI should intelligently layer or replace existing clothing as appropriate (e.g., a jacket goes over a shirt, a new shirt replaces an old one).
-5.  **PRESERVE EVERYTHING ELSE:** The person's identity (face, body, hair), their existing clothing (if it doesn't conflict with the new garment), the pose, and the entire background from the 'model image' MUST be preserved exactly.
-6.  **OUTPUT:** Return ONLY the final, combined image. Do not add any text or other elements.`;
+**Context:** You will be given two images.
+-   **Image 1 (Base Image):** This image contains the person, their pose, the background, and any clothing they are currently wearing.
+-   **Image 2 (Garment Image):** This image contains ONLY the new piece of clothing to be added.
+
+**Your Goal:**
+Create a new, photorealistic image that combines the two. The person from the Base Image should now be wearing the clothing from the Garment Image.
+
+**Critical Instructions:**
+1.  **Layering is Key:** The new garment must be realistically fitted to the person's body. Intelligently layer it on top of or replace existing clothing as appropriate (e.g., a jacket goes over a shirt; a new t-shirt replaces an old t-shirt).
+2.  **Preserve the Original:** You MUST preserve the person's identity (face, features, hair, body type), their pose, and the entire background from the Base Image. Do not change anything except for adding the new garment.
+3.  **Output:** Return ONLY the final, combined image. Do not include any text, descriptions, or other content in your response.`;
     const response = await getAiInstance().models.generateContent({
         model,
         contents: { parts: [modelImagePart, garmentImagePart, { text: prompt }] },
