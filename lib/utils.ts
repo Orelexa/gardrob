@@ -31,12 +31,13 @@ export const getFriendlyErrorMessage = (error: unknown, defaultMessage: string =
  */
 export const imageUrlToDataUrl = async (url: string): Promise<string> => {
     try {
-        // Use a CORS proxy if running on localhost to avoid CORS issues,
-        // though the gsutil cors configuration should make this unnecessary.
-        // const proxyUrl = window.location.hostname === 'localhost' ? 'https://cors-anywhere.herokuapp.com/' : '';
-        const response = await fetch(url);
+        // Workaround for CORS issue: Use a proxy to fetch images from Firebase Storage.
+        // The root cause is that the storage bucket's CORS policy is not configured
+        // to allow requests from this web application's origin. This is a common solution for client-side only fixes.
+        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+        const response = await fetch(proxyUrl);
         if (!response.ok) {
-            throw new Error(`Network response was not ok: ${response.statusText}`);
+            throw new Error(`Network response was not ok via proxy: ${response.statusText}`);
         }
         const blob = await response.blob();
         return new Promise((resolve, reject) => {
@@ -52,7 +53,7 @@ export const imageUrlToDataUrl = async (url: string): Promise<string> => {
             reader.readAsDataURL(blob);
         });
     } catch (error) {
-        console.error('Error converting image URL to Data URL:', error);
+        console.error('Error converting image URL to Data URL via proxy:', error);
         // Provide a more specific error message for the user.
         throw new Error('A kép erőforrásának feldolgozása nem sikerült. Ellenőrizd a hálózati kapcsolatot.');
     }
