@@ -143,8 +143,13 @@ const App: React.FC = () => {
     
     try {
       const baseImage = outfitHistory[outfitHistory.length - 1].imageUrl;
-      // Convert the https:// URL from Firebase Storage to a data URL for Gemini
-      const baseImageAsDataUrl = await imageUrlToDataUrl(baseImage);
+      
+      // OPTIMIZATION: If the base image is already a Data URL, use it directly.
+      // Otherwise, fetch and convert the remote URL. This prevents a slow,
+      // unnecessary proxy call for subsequent garment additions.
+      const baseImageAsDataUrl = baseImage.startsWith('data:')
+          ? baseImage
+          : await imageUrlToDataUrl(baseImage);
   
       const newImageUrl = await generateVirtualTryOnImage(baseImageAsDataUrl, garmentFile);
       const newLayer: OutfitLayer = { garment: garmentInfo, imageUrl: newImageUrl };
@@ -199,8 +204,14 @@ const App: React.FC = () => {
     
     try {
       const baseImage = outfitHistory[outfitHistory.length - 1].imageUrl;
-      // Convert the https:// URL from Firebase Storage to a data URL for Gemini
-      const baseImageAsDataUrl = await imageUrlToDataUrl(baseImage);
+      
+      // OPTIMIZATION: If the base image is already a Data URL, use it directly.
+      // This prevents a slow proxy call when generating poses for an outfit
+      // that has already been modified by the AI.
+      const baseImageAsDataUrl = baseImage.startsWith('data:')
+          ? baseImage
+          : await imageUrlToDataUrl(baseImage);
+
       const instruction = POSE_INSTRUCTIONS[index];
       
       const newImageUrl = await generatePoseVariation(baseImageAsDataUrl, instruction);
