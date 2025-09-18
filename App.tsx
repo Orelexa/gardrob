@@ -52,7 +52,6 @@ const App: React.FC = () => {
   const [poseVariations, setPoseVariations] = useState<Record<number, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
-  const [isPreparingData, setIsPreparingData] = useState(false);
   
   // Modals State
   const [isWardrobeOpen, setIsWardrobeOpen] = useState(false);
@@ -87,7 +86,6 @@ const App: React.FC = () => {
   useEffect(() => {
       if (appState.view === 'dressing_room') {
           const fetchAndPrepareData = async () => {
-              setIsPreparingData(true);
               setLoadingMessage('Felhasználói adatok betöltése...');
               try {
                   const [userWardrobe, userOutfits] = await Promise.all([
@@ -98,24 +96,32 @@ const App: React.FC = () => {
                   const fullWardrobe = [...defaultWardrobe, ...userWardrobe];
                   setWardrobe(fullWardrobe);
                   setSavedOutfits(userOutfits);
+                  // Set items immediately for rendering, they will be without dataUrls initially
+                  setPreparedWardrobe(fullWardrobe);
 
-                  setLoadingMessage('Gardrób előkészítése...');
-                  const preparedItems = await Promise.all(
-                      fullWardrobe.map(async (item) => {
-                          try {
-                              const dataUrl = await imageUrlToDataUrl(item.url);
-                              return { ...item, dataUrl };
-                          } catch (e) {
+                  // Non-blocking background preparation of garment images
+                  fullWardrobe.forEach(item => {
+                      imageUrlToDataUrl(item.url)
+                          .then(dataUrl => {
+                              setPreparedWardrobe(currentPreparedWardrobe => {
+                                  // Use a functional update to get the latest state
+                                  const newPreparedWardrobe = [...currentPreparedWardrobe];
+                                  const itemIndex = newPreparedWardrobe.findIndex(i => i.id === item.id);
+                                  if (itemIndex > -1) {
+                                      newPreparedWardrobe[itemIndex] = { ...newPreparedWardrobe[itemIndex], dataUrl };
+                                  }
+                                  return newPreparedWardrobe;
+                              });
+                          })
+                          .catch(e => {
                               console.warn(`Nem sikerült előkészíteni a ruhadarabot: ${item.name}`, e);
-                              return item; // Visszaadjuk az eredeti elemet, ha a betöltés sikertelen
-                          }
-                      })
-                  );
-                  setPreparedWardrobe(preparedItems);
+                              // The item will remain in the list but will be un-selectable
+                          });
+                  });
+
               } catch (err) {
                   alert(`Hiba a felhasználói adatok betöltésekor: ${getFriendlyErrorMessage(err)}`);
               } finally {
-                  setIsPreparingData(false);
                   setLoadingMessage('');
               }
           };
@@ -372,12 +378,6 @@ const App: React.FC = () => {
         const displayImageUrl = poseVariations[currentPoseIndex] || outfitHistory[outfitHistory.length - 1]?.imageUrl;
         return (
           <div className="w-full h-full flex flex-col md:flex-row gap-4 p-4 relative">
-            {isPreparingData && (
-              <div className="absolute inset-0 bg-white/80 backdrop-blur-md flex flex-col items-center justify-center z-30 rounded-lg">
-                  <Spinner />
-                  <p className="text-lg font-serif text-gray-700 mt-4 text-center px-4">{loadingMessage}</p>
-              </div>
-            )}
             <main className="flex-grow h-full md:w-3/5">
               <Canvas 
                 displayImageUrl={displayImageUrl}

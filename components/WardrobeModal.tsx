@@ -184,11 +184,12 @@ const WardrobeModal: React.FC<WardrobeModalProps> = ({ isOpen, onClose, onGarmen
                             {filteredWardrobe.map((item) => {
                                 const isActive = activeGarmentIds.includes(item.id);
                                 const isCustom = item.id.startsWith('custom-');
+                                const isReady = !!item.dataUrl;
                                 return (
                                     <div key={item.id} className="group relative">
                                         <button
                                             onClick={() => handleGarmentClick(item)}
-                                            disabled={isLoading || isActive}
+                                            disabled={isLoading || isActive || !isReady}
                                             className="w-full aspect-square border rounded-lg overflow-hidden transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-800 disabled:opacity-60 disabled:cursor-not-allowed"
                                             aria-label={`Select ${item.name}`}
                                         >
@@ -199,6 +200,11 @@ const WardrobeModal: React.FC<WardrobeModalProps> = ({ isOpen, onClose, onGarmen
                                             {isActive && (
                                                 <div className="absolute inset-0 bg-gray-900/70 flex items-center justify-center">
                                                     <CheckCircleIcon className="w-8 h-8 text-white" />
+                                                </div>
+                                            )}
+                                            {!isReady && (
+                                                <div className="absolute inset-0 bg-white/80 flex items-center justify-center backdrop-blur-sm">
+                                                    <Spinner className="w-6 h-6" />
                                                 </div>
                                             )}
                                         </button>
