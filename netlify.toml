@@ -1,9 +1,6 @@
-[build]
-  command = "npm run build"
-  publish = "dist"
-  functions = "netlify/functions"
-
 [[redirects]]
-  from = "/api/*"
-  to = "/.netlify/functions/:splat"
+  from = "/api/gemini-proxy"
+  to = "https://külső-szerver-url/api/v1/endpoint" # Ezt cseréld le a valódi proxy cél URL-re
   status = 200
+  force = true
+  methods = ["POST"]
