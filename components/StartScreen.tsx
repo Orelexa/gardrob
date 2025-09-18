@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { UploadCloudIcon, CheckCircleIcon } from './icons';
 import Spinner from './Spinner';
 import { generateVirtualTryOnImage } from '../services/geminiService';
+console.log('generateVirtualTryOnImage:', generateVirtualTryOnImage);
+
 import { getFriendlyErrorMessage } from '../lib/utils';
 
 interface StartScreenProps {
