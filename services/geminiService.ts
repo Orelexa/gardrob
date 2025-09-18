@@ -1,3 +1,4 @@
+console.log("GEMINISERVICE DEBUG VERZIÓ", Date.now());
 export const generateVirtualTryOnImage = async (
   modelImageUrl: string,
   garmentImageUrl: string,
