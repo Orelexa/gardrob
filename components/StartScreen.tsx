@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { UploadCloudIcon, CheckCircleIcon } from './icons';
 import Spinner from './Spinner';
 import { generateVirtualTryOnImage } from '../services/geminiService';
+
+// Debug log a függvény import ellenőrzéséhez
 console.log('generateVirtualTryOnImage:', generateVirtualTryOnImage);
 
 import { getFriendlyErrorMessage } from '../lib/utils';
@@ -71,7 +73,6 @@ const StartScreen: React.FC<StartScreenProps> = ({ onModelFinalized }) => {
       setGeneratedModelUrl(null);
       setError(null);
       try {
-        // Javított: üres string helyett adj meg egy változót vagy üres stringet, ha nincs garment képed
         const result = await generateVirtualTryOnImage(dataUrl, '');
         setGeneratedModelUrl(result);
       } catch (err) {
@@ -93,54 +94,4 @@ const StartScreen: React.FC<StartScreenProps> = ({ onModelFinalized }) => {
   const screenVariants = {
     initial: { opacity: 0, x: -20 },
     animate: { opacity: 1, x: 0 },
-    exit: { opacity: 0, x: 20 },
-  };
-
-  const handleSave = (name: string) => {
-    if (generatedModelUrl) {
-      onModelFinalized(name, generatedModelUrl);
-    }
-  };
-
-  return (
-    <AnimatePresence mode="wait">
-      {!userImageUrl ? (
-        <motion.div
-          key="uploader"
-          className="w-full max-w-7xl mx-auto flex flex-col lg:flex-row items-center justify-center gap-8 lg:gap-12"
-          variants={screenVariants}
-          initial="initial"
-          animate="animate"
-          exit="exit"
-          transition={{ duration: 0.4, ease: 'easeInOut' }}
-        >
-          <div className="w-full lg:w-1/2 flex flex-col items-center justify-center">
-            <img src="https://storage.googleapis.com/gemini-95-icons/asr-tryon.jpg" alt="Példa" className="w-full max-w-sm aspect-[2/3] rounded-2xl bg-gray-200" />
-          </div>
-        </motion.div>
-      ) : (
-        <motion.div
-          key="compare"
-          className="w-full max-w-6xl mx-auto h-full flex flex-col md:flex-row items-center justify-center gap-8 md:gap-12"
-          variants={screenVariants}
-          initial="initial"
-          animate="animate"
-          exit="exit"
-          transition={{ duration: 0.4, ease: 'easeInOut' }}
-        >
-          <div className="md:w-1/2 w-full flex items-center justify-center">
-            <div className={`relative rounded-1.25rem transition-all duration-700 ease-in-out ${isGenerating ? 'border border-gray-300 animate-pulse' : 'border border-transparent'}`}>
-              {generatedModelUrl ? (
-                <img src={generatedModelUrl} alt="Generált modell" className="w-[280px] h-[420px] sm:w-[320px] sm:h-[480px] lg:w-[400px] lg:h-[600px] rounded-2xl bg-gray-200" />
-              ) : (
-                <img src={userImageUrl} alt="Feltöltött kép" className="w-[280px] h-[420px] sm:w-[320px] sm:h-[480px] lg:w-[400px] lg:h-[600px] rounded-2xl bg-gray-200" />
-              )}
-            </div>
-          </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
-};
-
-export default StartScreen;
+    exit: { opacity
