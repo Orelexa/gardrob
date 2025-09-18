@@ -2,193 +2,138 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
 */
-import { GoogleGenAI, Modality, HarmCategory, HarmBlockThreshold } from "@google/genai";
-import type { WardrobeItem } from '../types.ts';
-import { imageUrlToDataUrl, fileToDataUrl } from '../lib/utils.ts';
 
-const safetySettings = [
-    {
-        category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-        threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-    },
-    {
-        category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-        threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-    },
-    {
-        category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-        threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-    },
-    {
-        category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-        threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-    },
-];
+import { GoogleGenAI, GenerateContentResponse, Modality } from "@google/genai";
 
-// This function is defined within the module scope so it's only created once.
-const getClient = (() => {
-    let client: GoogleGenAI | null = null;
-    return () => {
-        if (!client) {
-            const apiKey = import.meta.env.VITE_API_KEY;
-            if (!apiKey) {
-                throw new Error("VITE_API_KEY environment variable not set.");
-            }
-            client = new GoogleGenAI({ apiKey });
-        }
-        return client;
-    };
-})();
-
-
-// Helper to convert a File object to a GoogleGenerativeAI.Part object
-const fileToGenerativePart = async (file: File) => {
-    const base64EncodedData = await new Promise<string>((resolve, reject) => {
+const fileToPart = async (file: File) => {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = () => resolve((reader.result as string).split(',')[1]);
-        reader.onerror = (error) => reject(error);
         reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = error => reject(error);
     });
+    const { mimeType, data } = dataUrlToParts(dataUrl);
+    return { inlineData: { mimeType, data } };
+};
 
-    return {
-        inlineData: {
-            data: base64EncodedData,
-            mimeType: file.type,
-        },
-    };
+const dataUrlToParts = (dataUrl: string) => {
+    const arr = dataUrl.split(',');
+    if (arr.length < 2) throw new Error("Érvénytelen adat URL");
+    const mimeMatch = arr[0].match(/:(.*?);/);
+    if (!mimeMatch || !mimeMatch[1]) throw new Error("Nem sikerült a MIME típus kiolvasása az adat URL-ből");
+    return { mimeType: mimeMatch[1], data: arr[1] };
+}
+
+const dataUrlToPart = (dataUrl: string) => {
+    const { mimeType, data } = dataUrlToParts(dataUrl);
+    return { inlineData: { mimeType, data } };
+}
+
+const handleApiResponse = (response: GenerateContentResponse): string => {
+    // Check for a top-level block reason first.
+    if (response.promptFeedback?.blockReason) {
+        const { blockReason, blockReasonMessage } = response.promptFeedback;
+        const errorMessage = `A kérés blokkolva lett. Ok: ${blockReason}. ${blockReasonMessage || ''}`;
+        throw new Error(errorMessage);
+    }
+
+    // Ensure there are candidates to process.
+    if (!response.candidates || response.candidates.length === 0) {
+        const textFeedback = response.text?.trim();
+        const errorMessage = `Az MI modell nem adott vissza érvényes választ. ` + (textFeedback ? `A modell szöveggel válaszolt: "${textFeedback}"` : "Ez előfordulhat biztonsági szűrők vagy hálózati problémák miatt.");
+        throw new Error(errorMessage);
+    }
+
+    // Check the first candidate for a non-stop finish reason.
+    const firstCandidate = response.candidates[0];
+    if (firstCandidate.finishReason && firstCandidate.finishReason !== 'STOP') {
+        const errorMessage = `A képgenerálás váratlanul leállt. Ok: ${firstCandidate.finishReason}. Ez gyakran a biztonsági beállításokkal kapcsolatos.`;
+        throw new Error(errorMessage);
+    }
+    
+    // Now, safely look for an image part in the candidates.
+    // The candidate content might be missing if the response was blocked.
+    const imagePart = firstCandidate.content?.parts?.find(part => part.inlineData);
+
+    if (imagePart?.inlineData) {
+        const { mimeType, data } = imagePart.inlineData;
+        return `data:${mimeType};base64,${data}`;
+    }
+
+    // If no image is found after all checks, throw a generic error.
+    const textFeedback = response.text?.trim();
+    const errorMessage = `Az MI modell nem adott vissza képet. ` + (textFeedback ? `A modell szöveggel válaszolt: "${textFeedback}"` : "Ez előfordulhat biztonsági szűrők miatt, vagy ha a kérés túl összetett. Kérjük, próbálkozz másik képpel.");
+    throw new Error(errorMessage);
+};
+
+// --- Lazy Initialized AI Instance ---
+let aiInstance: GoogleGenAI | null = null;
+const model = 'gemini-2.5-flash-image-preview';
+
+/**
+ * Lazily initializes and returns the GoogleGenAI instance.
+ * This prevents the app from crashing on startup if the API key is not yet available.
+ */
+const getAiInstance = (): GoogleGenAI => {
+    if (!aiInstance) {
+        const apiKey = process.env.API_KEY;
+        if (!apiKey) {
+            // This error will be thrown at runtime, inside an async function, so it can be caught.
+            // The app itself will load properly.
+            throw new Error("A Gemini API kulcs (VITE_API_KEY) hiányzik. Ellenőrizd a .env fájlt, és indítsd újra a fejlesztői szervert.");
+        }
+        aiInstance = new GoogleGenAI({ apiKey });
+    }
+    return aiInstance;
 };
 
 
-/**
- * Generates a photorealistic model image from a user-uploaded photo.
- */
-export const generateModelImage = async (userImageFile: File): Promise<string> => {
-    const ai = getClient();
-    const userImagePart = await fileToGenerativePart(userImageFile);
-    
-    const textPart = {
-        text: `From the provided image of a person, generate a full-body, photorealistic virtual model. The model should be standing in a standard A-pose against a clean, plain, off-white studio background. They should be wearing neutral, simple, tight-fitting gray clothes (like a tank top and leggings) to clearly show their body shape. Ensure the lighting is even and soft, avoiding harsh shadows. The final image must be high-resolution and suitable for a virtual try-on application. Do not include any text, logos, or watermarks. The output must only be the image.`
-    };
+// --- Exported Functions ---
 
-    // FIX: Pass `safetySettings` inside the `config` object in the `generateContent` call.
-    const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image-preview',
-        contents: { parts: [userImagePart, textPart] },
+export const generateModelImage = async (userImage: File): Promise<string> => {
+    const userImagePart = await fileToPart(userImage);
+    const prompt = "You are an expert fashion photographer AI. Transform the person in this image into a full-body fashion model photo suitable for an e-commerce website. The background must be a clean, neutral studio backdrop (light gray, #f0f0f0). The person should have a neutral, professional model expression. Preserve the person's identity, unique features, and body type, but place them in a standard, relaxed standing model pose. The final image must be photorealistic. Return ONLY the final image.";
+    const response = await getAiInstance().models.generateContent({
+        model,
+        contents: { parts: [userImagePart, { text: prompt }] },
         config: {
             responseModalities: [Modality.IMAGE, Modality.TEXT],
-            safetySettings,
         },
     });
-
-    for (const part of response.candidates[0].content.parts) {
-        if (part.inlineData) {
-            return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-        }
-    }
-
-    const blockReason = response.candidates?.[0]?.finishReason;
-    if (blockReason === 'SAFETY') {
-        const reasonDetails = response.candidates?.[0]?.safetyRatings?.map(r => `${r.category}: ${r.probability}`).join(', ');
-        throw new Error(`A kérés biztonsági okokból blokkolva lett. Ok: ${reasonDetails || 'Ismeretlen'}. Kérjük, próbálj meg egy másik képet.`);
-    }
-    
-    throw new Error('No image was generated. The response may have been blocked or the format was unexpected.');
+    return handleApiResponse(response);
 };
 
-/**
- * Applies a garment to a model image (provided as a data URL).
- */
-export const generateVirtualTryOnImage = async (modelImageDataUrl: string, garmentItem: WardrobeItem): Promise<string> => {
-    const ai = getClient();
-    
-    const modelImageMimeType = modelImageDataUrl.substring(modelImageDataUrl.indexOf(":") + 1, modelImageDataUrl.indexOf(";"));
-    const modelImageDataBase64 = modelImageDataUrl.split(',')[1];
+export const generateVirtualTryOnImage = async (modelImageUrl: string, garmentImage: File): Promise<string> => {
+    const modelImagePart = dataUrlToPart(modelImageUrl);
+    const garmentImagePart = await fileToPart(garmentImage);
+    const prompt = `You are an expert virtual try-on AI. Your ONLY task is to place the clothing from the 'garment image' onto the person in the 'model image'.
 
-    const modelImagePart = {
-        inlineData: { data: modelImageDataBase64, mimeType: modelImageMimeType }
-    };
-
-    const garmentDataUrl = await imageUrlToDataUrl(garmentItem.url);
-    const garmentMimeType = garmentDataUrl.substring(garmentDataUrl.indexOf(":") + 1, garmentDataUrl.indexOf(";"));
-    const garmentDataBase64 = garmentDataUrl.split(',')[1];
-    
-    const garmentImagePart = {
-        inlineData: { data: garmentDataBase64, mimeType: garmentMimeType }
-    };
-    
-    const textPart = {
-        text: `Virtually try this garment on the model. Ensure the garment fits realistically, accounting for drape, folds, and lighting. Maintain the model's appearance and the background. The output should only be the image of the model wearing the garment.`
-    };
-    
-    // FIX: Pass `safetySettings` inside the `config` object in the `generateContent` call.
-    const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image-preview',
-        contents: { parts: [modelImagePart, garmentImagePart, textPart] },
+**Instructions:**
+1.  **IDENTIFY THE GARMENT:** The 'garment image' contains the ONLY piece of clothing you should add.
+2.  **IDENTIFY THE PERSON:** The 'model image' contains the person and the scene.
+3.  **COMBINE:** Create a new, photorealistic image where the person from the 'model image' is wearing the clothing from the 'garment image'.
+4.  **PERFECT FIT:** The garment must be realistically fitted to the person's body and pose, with natural folds, shadows, and lighting. The AI should intelligently layer or replace existing clothing as appropriate (e.g., a jacket goes over a shirt, a new shirt replaces an old one).
+5.  **PRESERVE EVERYTHING ELSE:** The person's identity (face, body, hair), their existing clothing (if it doesn't conflict with the new garment), the pose, and the entire background from the 'model image' MUST be preserved exactly.
+6.  **OUTPUT:** Return ONLY the final, combined image. Do not add any text or other elements.`;
+    const response = await getAiInstance().models.generateContent({
+        model,
+        contents: { parts: [modelImagePart, garmentImagePart, { text: prompt }] },
         config: {
             responseModalities: [Modality.IMAGE, Modality.TEXT],
-            safetySettings,
         },
     });
-
-    for (const part of response.candidates[0].content.parts) {
-        if (part.inlineData) {
-            return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-        }
-    }
-    
-    const blockReason = response.candidates?.[0]?.finishReason;
-    if (blockReason === 'SAFETY') {
-        const reasonDetails = response.candidates?.[0]?.safetyRatings?.map(r => `${r.category}: ${r.probability}`).join(', ');
-        throw new Error(`A kérés biztonsági okokból blokkolva lett. Ok: ${reasonDetails || 'Ismeretlen'}. Kérjük, próbálj meg egy másik képet.`);
-    }
-
-    throw new Error('Could not generate the try-on image.');
+    return handleApiResponse(response);
 };
 
-/**
- * Generates a new pose for the model wearing the last applied garment.
- */
-export const generatePoseVariation = async (baseModelDataUrl: string, lastGarment: WardrobeItem, poseInstruction: string): Promise<string> => {
-    const ai = getClient();
-    
-    const baseModelMimeType = baseModelDataUrl.substring(baseModelDataUrl.indexOf(":") + 1, baseModelDataUrl.indexOf(";"));
-    const baseModelDataBase64 = baseModelDataUrl.split(',')[1];
-    const baseModelPart = {
-        inlineData: { data: baseModelDataBase64, mimeType: baseModelMimeType }
-    };
-
-    const garmentDataUrl = await imageUrlToDataUrl(lastGarment.url);
-    const garmentMimeType = garmentDataUrl.substring(garmentDataUrl.indexOf(":") + 1, garmentDataUrl.indexOf(";"));
-    const garmentDataBase64 = garmentDataUrl.split(',')[1];
-    const garmentPart = {
-        inlineData: { data: garmentDataBase64, mimeType: garmentMimeType }
-    };
-
-    const textPart = {
-        text: `Take the provided base model and the garment, and render the model wearing the garment in the following pose: "${poseInstruction}". Ensure the fit and drape are realistic for the new pose. The background must remain a plain, off-white studio background.`
-    };
-
-    // FIX: Pass `safetySettings` inside the `config` object in the `generateContent` call.
-    const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image-preview',
-        contents: { parts: [baseModelPart, garmentPart, textPart] },
+export const generatePoseVariation = async (tryOnImageUrl: string, poseInstruction: string): Promise<string> => {
+    const tryOnImagePart = dataUrlToPart(tryOnImageUrl);
+    const prompt = `You are an expert fashion photographer AI. Take this image and regenerate it from a different perspective. The person, clothing, and background style must remain identical. The new perspective should be: "${poseInstruction}". Return ONLY the final image.`;
+    const response = await getAiInstance().models.generateContent({
+        model,
+        contents: { parts: [tryOnImagePart, { text: prompt }] },
         config: {
             responseModalities: [Modality.IMAGE, Modality.TEXT],
-            safetySettings,
         },
     });
-
-    for (const part of response.candidates[0].content.parts) {
-        if (part.inlineData) {
-            return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-        }
-    }
-    
-    const blockReason = response.candidates?.[0]?.finishReason;
-    if (blockReason === 'SAFETY') {
-        const reasonDetails = response.candidates?.[0]?.safetyRatings?.map(r => `${r.category}: ${r.probability}`).join(', ');
-        throw new Error(`A kérés biztonsági okokból blokkolva lett. Ok: ${reasonDetails || 'Ismeretlen'}. Kérjük, próbálj meg egy másik képet.`);
-    }
-
-    throw new Error('Could not generate the new pose.');
+    return handleApiResponse(response);
 };
