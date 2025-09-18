@@ -1,7 +1,7 @@
 export const generateVirtualTryOnImage = async (
   modelImageUrl: string,
   garmentImageUrl: string,
-  onProgress?: ((fraction: number) => void) | null,
+  onProgress?: ((fraction: number) => void) | null
 ): Promise<string> => {
   if (typeof onProgress === "function") onProgress(0.1);
   try {
@@ -12,9 +12,9 @@ export const generateVirtualTryOnImage = async (
     });
     if (typeof onProgress === "function") onProgress(0.8);
     if (!response.ok) {
-      const errorData = await response
-        .json()
-        .catch(() => ({ error: "Ismeretlen hiba a proxy szerveren." }));
+      const errorData = await response.json().catch(() => ({
+        error: "Ismeretlen hiba a proxy szerveren.",
+      }));
       throw new Error(errorData.error || `A proxy hibája: ${response.statusText}`);
     }
     const data = await response.json();
@@ -32,7 +32,7 @@ export const generateVirtualTryOnImage = async (
 export const generatePoseVariation = async (
   tryOnImageUrl: string,
   poseInstruction: string,
-  onProgress?: ((fraction: number) => void) | null,
+  onProgress?: ((fraction: number) => void) | null
 ): Promise<string> => {
   console.warn("A póz variáció funkció jelenleg nem elérhető.");
   throw new Error("Jelenleg nem elérhető.");
