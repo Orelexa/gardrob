@@ -109,23 +109,37 @@ const App: React.FC = () => {
   }, []);
 
   // --- Core Logic ---
-  const transitionToDressingRoom = (userId: string, model: UserModel) => {
-    setOutfitHistory([{ garment: null, imageUrl: model.imageUrl }]);
-    setPoseVariations({ 0: model.imageUrl });
-    setCurrentPoseIndex(0);
-    setAppState({ view: 'dressing_room', userId: userId, model });
+  const transitionToDressingRoom = async (userId: string, model: UserModel) => {
+    setAppState({ view: 'loading' });
+    try {
+        const modelDataUrl = model.imageUrl.startsWith('data:')
+            ? model.imageUrl
+            : await imageUrlToDataUrl(model.imageUrl);
+            
+        const optimizedModelDataUrl = await resizeImageDataUrl(modelDataUrl, 1024);
+        
+        setOutfitHistory([{ garment: null, imageUrl: optimizedModelDataUrl }]);
+        setPoseVariations({ 0: optimizedModelDataUrl });
+        setCurrentPoseIndex(0);
+        setAppState({ view: 'dressing_room', userId: userId, model });
+    } catch (err) {
+        alert(`Hiba a modell betöltésekor: ${getFriendlyErrorMessage(err)}`);
+        setAppState({ view: 'model_selection', userId: userId });
+    }
   };
 
-  const handleModelSelect = (model: UserModel) => {
+  const handleModelSelect = async (model: UserModel) => {
     if (appState.view === 'model_selection') {
-        transitionToDressingRoom(appState.userId, model);
+        await transitionToDressingRoom(appState.userId, model);
     }
   };
 
   const handleModelCreated = async (name: string, modelUrl: string) => {
       if (appState.view === 'model_creation') {
           const newModel = await storage.saveModelForUser(appState.userId, name, modelUrl);
-          transitionToDressingRoom(appState.userId, newModel);
+          // Use the data URL we already have to avoid re-downloading
+          const tempModelWithDataUrl = { ...newModel, imageUrl: modelUrl };
+          await transitionToDressingRoom(appState.userId, tempModelWithDataUrl);
       }
   };
 
@@ -142,11 +156,7 @@ const App: React.FC = () => {
     setLoadingMessage(`A(z) ${garmentInfo.name} előkészítése...`);
     
     try {
-      const baseImage = outfitHistory[outfitHistory.length - 1].imageUrl;
-      
-      const baseImageAsDataUrl = baseImage.startsWith('data:')
-          ? baseImage
-          : await imageUrlToDataUrl(baseImage);
+      const baseImageAsDataUrl = outfitHistory[outfitHistory.length - 1].imageUrl;
       
       setLoadingMessage(`Most próbáljuk fel: ${garmentInfo.name}...`);
       const rawImageUrl = await generateVirtualTryOnImage(baseImageAsDataUrl, garmentFile);
@@ -203,12 +213,7 @@ const App: React.FC = () => {
     setLoadingMessage('A modell felkészül az új pózra...');
     
     try {
-      const baseImage = outfitHistory[outfitHistory.length - 1].imageUrl;
-      
-      const baseImageAsDataUrl = baseImage.startsWith('data:')
-          ? baseImage
-          : await imageUrlToDataUrl(baseImage);
-
+      const baseImageAsDataUrl = outfitHistory[outfitHistory.length - 1].imageUrl;
       const instruction = POSE_INSTRUCTIONS[index];
       setLoadingMessage(`"${instruction}" póz generálása...`);
       
@@ -252,20 +257,31 @@ const App: React.FC = () => {
     if (appState.view !== 'dressing_room') return;
     const outfitToLoad = savedOutfits.find(o => o.id === outfitId);
     if (outfitToLoad) {
-      // Rehydrate garment info from current wardrobe
-      const rehydratedLayers: OutfitLayer[] = outfitToLoad.layers.map(layer => ({
-          garment: layer.garment ? wardrobe.find(w => w.id === layer.garment!.id) || layer.garment : null,
-          imageUrl: '' // This will be replaced
-      }));
-      if (rehydratedLayers.length > 0) {
-        rehydratedLayers[rehydratedLayers.length - 1].imageUrl = outfitToLoad.previewImageUrl;
-      }
-      
-
-      setOutfitHistory(rehydratedLayers);
-      setPoseVariations({ 0: outfitToLoad.previewImageUrl });
-      setCurrentPoseIndex(0);
       setIsSavedOutfitsOpen(false);
+      setIsLoading(true);
+      setLoadingMessage('Szett betöltése...');
+      try {
+        const rehydratedLayers: OutfitLayer[] = outfitToLoad.layers.map(layer => ({
+            garment: layer.garment ? wardrobe.find(w => w.id === layer.garment!.id) || layer.garment : null,
+            imageUrl: '' // This will be replaced
+        }));
+
+        const previewDataUrl = await imageUrlToDataUrl(outfitToLoad.previewImageUrl);
+        const optimizedPreviewDataUrl = await resizeImageDataUrl(previewDataUrl, 1024);
+
+        if (rehydratedLayers.length > 0) {
+          rehydratedLayers[rehydratedLayers.length - 1].imageUrl = optimizedPreviewDataUrl;
+        }
+
+        setOutfitHistory(rehydratedLayers);
+        setPoseVariations({ 0: optimizedPreviewDataUrl });
+        setCurrentPoseIndex(0);
+      } catch(err) {
+        alert(`Hiba a szett betöltésekor: ${getFriendlyErrorMessage(err)}`);
+      } finally {
+        setIsLoading(false);
+        setLoadingMessage('');
+      }
     }
   };
   
