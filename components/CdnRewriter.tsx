@@ -5,12 +5,22 @@ function isEligible(url: string) {
   if (!url) return false;
   if (url.startsWith("data:")) return false;
   if (url.startsWith("blob:")) return false;
-  return url.startsWith("http://") || url.startsWith("https://") || url.startsWith("/");
+  return true; // bármi más mehet CDN-re (majd normalizáljuk)
+}
+
+function normalizeUrl(u: string) {
+  try {
+    // Relatív útból (pl. "img.png" vagy "assets/x.png") teljes URL lesz
+    if (u.startsWith("http://") || u.startsWith("https://") || u.startsWith("/")) return u;
+    return new URL(u, window.location.origin).toString();
+  } catch {
+    return u;
+  }
 }
 
 function toCdn(url: string, widthHint?: number) {
   const params = new URLSearchParams();
-  params.set("url", url);
+  params.set("url", url); // Netlify belül kódolja
   if (widthHint && Number.isFinite(widthHint)) params.set("w", String(widthHint));
   params.set("fit", "cover");
   params.set("q", "75");
@@ -19,9 +29,9 @@ function toCdn(url: string, widthHint?: number) {
 
 /**
  * Production módban végigmegy az összes <img>-en:
- * - ha még nem CDN-es és a forrás alkalmas (http/https vagy /...), átírja CDN-re
- * - data:/blob: képeket békén hagyja (pl. helyi előnézet)
- * - dinamikusan hozzáadott képeket is figyeli (MutationObserver)
+ * - ha még nem CDN-es és a forrás alkalmas (nem data:/blob:), átírja CDN-re
+ * - relatív utat abszolútra normalizál, hogy a CDN tudja kezelni
+ * - dinamikusan bekerülő képeket is figyeli (MutationObserver)
  */
 export default function CdnRewriter() {
   useEffect(() => {
@@ -30,11 +40,14 @@ export default function CdnRewriter() {
     const rewriteOne = (img: HTMLImageElement) => {
       try {
         if (!img) return;
-        const current = img.getAttribute("src") || "";
-        if (!current) return;
-        if (!isEligible(current)) return;
+        const currentRaw = img.getAttribute("src") || "";
+        if (!currentRaw) return;
+        if (!isEligible(currentRaw)) return;
+
+        const current = normalizeUrl(currentRaw);
         if (current.startsWith("/.netlify/images")) return;
 
+        // eredeti megőrzése (egyszer kell)
         if (!img.getAttribute("data-original-src")) {
           img.setAttribute("data-original-src", current);
         }
@@ -42,6 +55,7 @@ export default function CdnRewriter() {
         const cdnUrl = toCdn(current, widthHint);
         img.setAttribute("src", cdnUrl);
 
+        // Egyszerű srcset a gyakori szélességekre
         if (!img.getAttribute("srcset")) {
           const widths = [320, 480, 640, 960, 1280];
           const ss = widths.map((w) => `${toCdn(current, w)} ${w}w`).join(", ");
@@ -49,12 +63,14 @@ export default function CdnRewriter() {
           img.setAttribute("sizes", "(max-width: 640px) 100vw, 50vw");
         }
       } catch {
-        /* csendben tovább */
+        /* csendben továbblépünk */
       }
     };
 
+    // induláskor
     Array.from(document.images).forEach(rewriteOne);
 
+    // figyeljük a DOM-ot (dinamikus képek)
     const mo = new MutationObserver((muts) => {
       for (const m of muts) {
         if (m.type === "childList") {
