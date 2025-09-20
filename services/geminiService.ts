@@ -1,5 +1,5 @@
 // services/geminiService.ts
-// VITE_GEMINI_API_KEY kötelező. Opcionális: VITE_GEMINI_MODEL.
+// VITE_GEMINI_API_KEY (opcionális, de a generáláshoz kell). Opcionális: VITE_GEMINI_MODEL.
 
 import {
   GoogleGenerativeAI,
@@ -12,36 +12,47 @@ import {
    Alapbeállítások
    =========================== */
 
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string;
-if (!API_KEY) {
-  throw new Error("Hiányzik a VITE_GEMINI_API_KEY. Add meg az ENV-ben vagy .env fájlban.");
-}
-
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
 const MODEL_ID =
   (import.meta.env.VITE_GEMINI_MODEL as string) ?? "gemini-2.0-flash-exp";
 
-const genAI = new GoogleGenerativeAI(API_KEY);
-
-// Lazább szűrés a NEM policy-s kategóriákban.
-// FIGYELEM: a szolgáltató policy-tiltásait ez NEM írja felül.
+// Lazább szűrés (policy-t nem írja felül)
 const safetySettings: { category: HarmCategory; threshold: HarmBlockThreshold }[] = [
   { category: HarmCategory.HARM_CATEGORY_HARASSMENT,        threshold: HarmBlockThreshold.BLOCK_NONE },
   { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,       threshold: HarmBlockThreshold.BLOCK_NONE },
   { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
 ];
 
+// Csak akkor hozunk létre klienst, ha van kulcs – így nem hal el az app betöltéskor.
+function getGenAI(): GoogleGenerativeAI | null {
+  try {
+    if (!API_KEY) return null;
+    return new GoogleGenerativeAI(API_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function requireGenAI(context: string): GoogleGenerativeAI {
+  const client = getGenAI();
+  if (!client) {
+    throw new Error(
+      `${context} nem futtatható: nincs beállítva Gemini API kulcs (VITE_GEMINI_API_KEY).`
+    );
+  }
+  return client;
+}
+
 /* ===========================
    Segédfüggvények
    =========================== */
 
-// DataURL -> { mimeType, base64 }
 function parseDataUrl(dataUrl: string): { mimeType: string; base64: string } {
   const m = /^data:([^;]+);base64,(.*)$/i.exec(dataUrl);
   if (!m) throw new Error("Érvénytelen data URL kép.");
   return { mimeType: m[1], base64: m[2] };
 }
 
-// Gemini hibák barátságos üzenetre fordítása
 function formatGeminiError(e: unknown, context: string): Error {
   const msg = e instanceof Error ? e.message : String(e);
   if (/SAFETY|HARM|BLOCK|PROHIBITED|POLICY|PERMISSION/i.test(msg)) {
@@ -50,9 +61,8 @@ function formatGeminiError(e: unknown, context: string): Error {
   return new Error(`${context} nem sikerült. Részletek: ${msg}`);
 }
 
-// Képes output kérése a modeltől
 async function generateImageFromParts(parts: Content["parts"], outMime: string) {
-  const model = genAI.getGenerativeModel({
+  const model = requireGenAI("Kép generálás").getGenerativeModel({
     model: MODEL_ID,
     safetySettings,
     generationConfig: { responseMimeType: outMime },
@@ -60,7 +70,6 @@ async function generateImageFromParts(parts: Content["parts"], outMime: string) 
 
   const result = await model.generateContent({ contents: [{ role: "user", parts }] });
 
-  // 1) Közvetlen képes válasz (inlineData)
   const candidate = result.response?.candidates?.[0];
   const inlinePart = candidate?.content?.parts?.find(
     (p: any) => p?.inlineData?.data
@@ -70,8 +79,7 @@ async function generateImageFromParts(parts: Content["parts"], outMime: string) 
     return `data:${outMime};base64,${inlinePart.inlineData.data}`;
   }
 
-  // 2) Ha szöveget kaptunk, az hiba ebben a flow-ban
-  const txt = result.response?.text?.();
+  const txt = (result.response as any)?.text?.();
   if (txt) {
     throw new Error("A modell szöveges választ adott vissza a kép helyett. Próbáld újra.");
   }
@@ -80,28 +88,21 @@ async function generateImageFromParts(parts: Content["parts"], outMime: string) 
 }
 
 /* ===========================
-   Publikus függvények
+   Publikus API
    =========================== */
 
-/**
- * Modellkép előkészítése a StartScreen számára.
- * Most „pass-through”: visszaadja a bemeneti képet (data URL),
- * így a modell létrehozás nem akad fenn policy-n.
- */
+/** StartScreen: pass-through, hogy kulcs nélkül is betöltsön az app */
 export async function generateModelImage(baseImageDataUrl: string): Promise<string> {
   if (!baseImageDataUrl?.startsWith("data:")) {
     throw new Error("generateModelImage: data URL képet várok.");
   }
-  // Ha később akarsz méretezést/normalizálást, ide kerül.
   return baseImageDataUrl;
 }
 
-// DEFAULT export is: a StartScreen default importja is működjön
+// Default export (StartScreen defaultként importálja)
 export default generateModelImage;
 
-/**
- * Virtuális „felpróbálás”: garment képet illeszti a modellre.
- */
+/** Ruhadarab „felpróbálása” (Gemini szükséges) */
 export async function generateVirtualTryOnImage(
   baseImageDataUrl: string,
   garmentDataUrl: string
@@ -127,9 +128,7 @@ export async function generateVirtualTryOnImage(
   }
 }
 
-/**
- * Új póz variáció ugyanarra a személyre/öltözetre.
- */
+/** Póz variáció (Gemini szükséges) */
 export async function generatePoseVariation(
   baseImageDataUrl: string,
   instruction: string

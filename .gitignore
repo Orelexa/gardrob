@@ -7,12 +7,27 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies / build output
 node_modules
 dist
 dist-ssr
+coverage
 *.local
 
-# Editor directories and files
+# Environment files (NE kerüljön repo-ba)
+.env
+.env.*
+!.env.example
+
+# Netlify helyi mappa (CLI/preview), de a konfig maradjon
+.netlify/*
+!netlify.toml
+
+# Firebase helyi fájlok (ha használnád)
+firebase-debug.log*
+.firebaserc.local
+
+# Editor / IDE
 .vscode/*
 !.vscode/extensions.json
 .idea
@@ -22,3 +37,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# OS / misc
+Thumbs.db
