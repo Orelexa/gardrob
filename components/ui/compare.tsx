@@ -11,7 +11,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "../../lib/utils.ts";
 // FIX: Add file extension to local import for consistent module resolution.
 import { DotsVerticalIcon } from "../icons.tsx";
- 
+import SmartImage from "../SmartImage";
+
 interface CompareProps {
   firstImage?: string;
   secondImage?: string;
@@ -24,6 +25,7 @@ interface CompareProps {
   autoplay?: boolean;
   autoplayDuration?: number;
 }
+
 export const Compare = ({
   firstImage = "",
   secondImage = "",
@@ -38,48 +40,47 @@ export const Compare = ({
 }: CompareProps) => {
   const [sliderXPercent, setSliderXPercent] = useState(initialSliderPercentage);
   const [isDragging, setIsDragging] = useState(false);
- 
+
   const sliderRef = useRef<HTMLDivElement>(null);
- 
+
   const [isMouseOver, setIsMouseOver] = useState(false);
- 
+
   // FIX: Use ReturnType<typeof setTimeout> for browser compatibility instead of NodeJS.Timeout
   const autoplayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
- 
+
   const startAutoplay = useCallback(() => {
     if (!autoplay) return;
- 
+
     const startTime = Date.now();
     const animate = () => {
       const elapsedTime = Date.now() - startTime;
-      const progress =
-        (elapsedTime % (autoplayDuration * 2)) / autoplayDuration;
+      const progress = (elapsedTime % (autoplayDuration * 2)) / autoplayDuration;
       const percentage = progress <= 1 ? progress * 100 : (2 - progress) * 100;
- 
+
       setSliderXPercent(percentage);
       autoplayRef.current = setTimeout(animate, 16); // ~60fps
     };
- 
+
     animate();
   }, [autoplay, autoplayDuration]);
- 
+
   const stopAutoplay = useCallback(() => {
     if (autoplayRef.current) {
       clearTimeout(autoplayRef.current);
       autoplayRef.current = null;
     }
   }, []);
- 
+
   useEffect(() => {
     startAutoplay();
     return () => stopAutoplay();
   }, [startAutoplay, stopAutoplay]);
- 
+
   function mouseEnterHandler() {
     setIsMouseOver(true);
     stopAutoplay();
   }
- 
+
   function mouseLeaveHandler() {
     setIsMouseOver(false);
     if (slideMode === "hover") {
@@ -90,22 +91,22 @@ export const Compare = ({
     }
     startAutoplay();
   }
- 
+
   const handleStart = useCallback(
-    (clientX: number) => {
+    (_clientX: number) => {
       if (slideMode === "drag") {
         setIsDragging(true);
       }
     },
     [slideMode]
   );
- 
+
   const handleEnd = useCallback(() => {
     if (slideMode === "drag") {
       setIsDragging(false);
     }
   }, [slideMode]);
- 
+
   const handleMove = useCallback(
     (clientX: number) => {
       if (!sliderRef.current) return;
@@ -120,7 +121,7 @@ export const Compare = ({
     },
     [slideMode, isDragging]
   );
- 
+
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => handleStart(e.clientX),
     [handleStart]
@@ -130,7 +131,7 @@ export const Compare = ({
     (e: React.MouseEvent) => handleMove(e.clientX),
     [handleMove]
   );
- 
+
   const handleTouchStart = useCallback(
     (e: React.TouchEvent) => {
       if (!autoplay) {
@@ -139,13 +140,13 @@ export const Compare = ({
     },
     [handleStart, autoplay]
   );
- 
+
   const handleTouchEnd = useCallback(() => {
     if (!autoplay) {
       handleEnd();
     }
   }, [handleEnd, autoplay]);
- 
+
   const handleTouchMove = useCallback(
     (e: React.TouchEvent) => {
       if (!autoplay) {
@@ -154,7 +155,7 @@ export const Compare = ({
     },
     [handleMove, autoplay]
   );
- 
+
   return (
     <div
       ref={sliderRef}
@@ -201,6 +202,8 @@ export const Compare = ({
           )}
         </motion.div>
       </AnimatePresence>
+
+      {/* FELSŐ réteg (firstImage) – clipPath-szel vágjuk */}
       <div className="overflow-hidden w-full h-full relative z-20 pointer-events-none">
         <AnimatePresence initial={false}>
           {firstImage ? (
@@ -209,40 +212,53 @@ export const Compare = ({
                 "absolute inset-0 z-20 rounded-2xl shrink-0 w-full h-full select-none overflow-hidden",
                 firstImageClassName
               )}
-              style={{
-                clipPath: `inset(0 ${100 - sliderXPercent}% 0 0)`,
-              }}
+              style={{ clipPath: `inset(0 ${100 - sliderXPercent}% 0 0)` }}
               transition={{ duration: 0 }}
             >
-              <img
+              <SmartImage
                 alt="first image"
                 src={firstImage}
                 className={cn(
-                  "absolute inset-0  z-20 rounded-2xl shrink-0 w-full h-full select-none object-cover",
+                  "absolute inset-0 z-20 rounded-2xl shrink-0 w-full h-full select-none object-cover",
                   firstImageClassName
                 )}
-                draggable={false}
+                sizes="(max-width: 768px) 100vw, 400px"
+                // a konténer 400x400 – fixálhatod is:
+                width={400}
+                height={400}
+                placeholderSrc="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjQwMCIgZmlsbD0iI2VlZWVlZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIi8+"
               />
             </motion.div>
           ) : null}
         </AnimatePresence>
       </div>
- 
+
+      {/* ALSÓ réteg (secondImage) */}
       <AnimatePresence initial={false}>
         {secondImage ? (
-          <motion.img
+          <motion.div
             className={cn(
-              "absolute top-0 left-0 z-[19]  rounded-2xl w-full h-full select-none object-cover",
+              "absolute top-0 left-0 z-[19] rounded-2xl w-full h-full select-none object-cover",
               secondImageClassname
             )}
-            alt="second image"
-            src={secondImage}
-            draggable={false}
-          />
+          >
+            <SmartImage
+              alt="second image"
+              src={secondImage}
+              className={cn(
+                "absolute inset-0 z-[19] rounded-2xl w-full h-full select-none object-cover",
+                secondImageClassname
+              )}
+              sizes="(max-width: 768px) 100vw, 400px"
+              width={400}
+              height={400}
+              placeholderSrc="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjQwMCIgZmlsbD0iI2VlZWVlZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIi8+"
+            />
+          </motion.div>
         ) : null}
       </AnimatePresence>
     </div>
   );
 };
- 
+
 const MemoizedSparklesCore = React.memo(SparklesCore);
