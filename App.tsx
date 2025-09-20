@@ -25,6 +25,9 @@ import { generateVirtualTryOnImage, generatePoseVariation } from './services/gem
 import { getFriendlyErrorMessage, imageUrlToDataUrl, resizeImageDataUrl } from './lib/utils.ts';
 import { defaultWardrobe } from './wardrobe.ts';
 
+// 👇 Minden <img>-et CDN-re ír élesben
+import CdnRewriter from './components/CdnRewriter.tsx';
+
 type AppState =
   | { view: 'loading' }
   | { view: 'auth' }
@@ -63,7 +66,6 @@ const App: React.FC = () => {
   const [preparedWardrobe, setPreparedWardrobe] = useState<WardrobeItem[]>([]);
   const [savedOutfits, setSavedOutfits] = useState<SavedOutfit[]>([]);
 
-
   // --- Authentication ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -84,50 +86,45 @@ const App: React.FC = () => {
   
   // --- Data Fetching & Preparation ---
   useEffect(() => {
-      if (appState.view === 'dressing_room') {
-          const fetchAndPrepareData = async () => {
-              setLoadingMessage('Felhasználói adatok betöltése...');
-              try {
-                  const [userWardrobe, userOutfits] = await Promise.all([
-                      storage.getWardrobeForUser(appState.userId),
-                      storage.getSavedOutfitsForUser(appState.userId)
-                  ]);
-                  
-                  const fullWardrobe = [...defaultWardrobe, ...userWardrobe];
-                  setWardrobe(fullWardrobe);
-                  setSavedOutfits(userOutfits);
-                  // Set items immediately for rendering, they will be without dataUrls initially
-                  setPreparedWardrobe(fullWardrobe);
+    if (appState.view === 'dressing_room') {
+      const fetchAndPrepareData = async () => {
+        setLoadingMessage('Felhasználói adatok betöltése...');
+        try {
+          const [userWardrobe, userOutfits] = await Promise.all([
+            storage.getWardrobeForUser(appState.userId),
+            storage.getSavedOutfitsForUser(appState.userId)
+          ]);
+          
+          const fullWardrobe = [...defaultWardrobe, ...userWardrobe];
+          setWardrobe(fullWardrobe);
+          setSavedOutfits(userOutfits);
+          // Azonnali render (dataUrl nélkül is)
+          setPreparedWardrobe(fullWardrobe);
 
-                  // Non-blocking background preparation of garment images
-                  fullWardrobe.forEach(item => {
-                      imageUrlToDataUrl(item.url)
-                          .then(dataUrl => {
-                              setPreparedWardrobe(currentPreparedWardrobe => {
-                                  // Use a functional update to get the latest state
-                                  const newPreparedWardrobe = [...currentPreparedWardrobe];
-                                  const itemIndex = newPreparedWardrobe.findIndex(i => i.id === item.id);
-                                  if (itemIndex > -1) {
-                                      newPreparedWardrobe[itemIndex] = { ...newPreparedWardrobe[itemIndex], dataUrl };
-                                  }
-                                  return newPreparedWardrobe;
-                              });
-                          })
-                          .catch(e => {
-                              console.warn(`Nem sikerült előkészíteni a ruhadarabot: ${item.name}`, e);
-                              // The item will remain in the list but will be un-selectable
-                          });
-                  });
+          // Háttér-előkészítés dataUrl-re
+          fullWardrobe.forEach(item => {
+            imageUrlToDataUrl(item.url)
+              .then(dataUrl => {
+                setPreparedWardrobe(current => {
+                  const next = [...current];
+                  const idx = next.findIndex(i => i.id === item.id);
+                  if (idx > -1) next[idx] = { ...next[idx], dataUrl };
+                  return next;
+                });
+              })
+              .catch(e => {
+                console.warn(`Nem sikerült előkészíteni a ruhadarabot: ${item.name}`, e);
+              });
+          });
 
-              } catch (err) {
-                  alert(`Hiba a felhasználói adatok betöltésekor: ${getFriendlyErrorMessage(err)}`);
-              } finally {
-                  setLoadingMessage('');
-              }
-          };
-          fetchAndPrepareData();
-      }
-  // FIX: Safely access `userId` for the dependency array. `appState` might not have `userId` in all states, causing a TypeScript error.
+        } catch (err) {
+          alert(`Hiba a felhasználói adatok betöltésekor: ${getFriendlyErrorMessage(err)}`);
+        } finally {
+          setLoadingMessage('');
+        }
+      };
+      fetchAndPrepareData();
+    }
   }, [appState.view, 'userId' in appState ? appState.userId : null]);
 
   // --- Debug Key Combination ---
@@ -146,35 +143,32 @@ const App: React.FC = () => {
   const transitionToDressingRoom = async (userId: string, model: UserModel) => {
     setAppState({ view: 'loading' });
     try {
-        const modelDataUrl = model.imageUrl.startsWith('data:')
-            ? model.imageUrl
-            : await imageUrlToDataUrl(model.imageUrl);
-            
-        const optimizedModelDataUrl = await resizeImageDataUrl(modelDataUrl, 1024);
-        
-        setOutfitHistory([{ garment: null, imageUrl: optimizedModelDataUrl }]);
-        setPoseVariations({ 0: optimizedModelDataUrl });
-        setCurrentPoseIndex(0);
-        setAppState({ view: 'dressing_room', userId: userId, model });
+      const modelDataUrl = model.imageUrl.startsWith('data:')
+        ? model.imageUrl
+        : await imageUrlToDataUrl(model.imageUrl);
+      const optimizedModelDataUrl = await resizeImageDataUrl(modelDataUrl, 1024);
+      setOutfitHistory([{ garment: null, imageUrl: optimizedModelDataUrl }]);
+      setPoseVariations({ 0: optimizedModelDataUrl });
+      setCurrentPoseIndex(0);
+      setAppState({ view: 'dressing_room', userId, model });
     } catch (err) {
-        alert(`Hiba a modell betöltésekor: ${getFriendlyErrorMessage(err)}`);
-        setAppState({ view: 'model_selection', userId: userId });
+      alert(`Hiba a modell betöltésekor: ${getFriendlyErrorMessage(err)}`);
+      setAppState({ view: 'model_selection', userId });
     }
   };
 
   const handleModelSelect = async (model: UserModel) => {
     if (appState.view === 'model_selection') {
-        await transitionToDressingRoom(appState.userId, model);
+      await transitionToDressingRoom(appState.userId, model);
     }
   };
 
   const handleModelCreated = async (name: string, modelUrl: string) => {
-      if (appState.view === 'model_creation') {
-          const newModel = await storage.saveModelForUser(appState.userId, name, modelUrl);
-          // Use the data URL we already have to avoid re-downloading
-          const tempModelWithDataUrl = { ...newModel, imageUrl: modelUrl };
-          await transitionToDressingRoom(appState.userId, tempModelWithDataUrl);
-      }
+    if (appState.view === 'model_creation') {
+      const newModel = await storage.saveModelForUser(appState.userId, name, modelUrl);
+      const tempModelWithDataUrl = { ...newModel, imageUrl: modelUrl };
+      await transitionToDressingRoom(appState.userId, tempModelWithDataUrl);
+    }
   };
 
   const handleStartOver = () => {
@@ -196,7 +190,6 @@ const App: React.FC = () => {
     
     try {
       const baseImageAsDataUrl = outfitHistory[outfitHistory.length - 1].imageUrl;
-      
       const rawImageUrl = await generateVirtualTryOnImage(baseImageAsDataUrl, garmentInfo.dataUrl);
       setLoadingMessage('Kép optimalizálása...');
       const newImageUrl = await resizeImageDataUrl(rawImageUrl, 1024);
@@ -204,7 +197,6 @@ const App: React.FC = () => {
       setOutfitHistory(prev => [...prev, newLayer]);
       setCurrentPoseIndex(0);
       setPoseVariations({ 0: newImageUrl });
-
     } catch(err) {
       alert(`Hiba a ruhadarab felpróbálásakor: ${getFriendlyErrorMessage(err)}`);
     } finally {
@@ -223,41 +215,40 @@ const App: React.FC = () => {
       setPreparedWardrobe(prev => [...prev, preparedNewGarment]);
     } catch(e) {
       console.error("Nem sikerült előkészíteni az újonnan hozzáadott ruhadarabot", e);
-      // Add it anyway, so it appears in the list, even if it might fail on click
       setWardrobe(prev => [...prev, newGarment]);
       setPreparedWardrobe(prev => [...prev, newGarment]);
     }
   };
   
   const handleGarmentDelete = async (garmentId: string) => {
-      if (appState.view !== 'dressing_room') return;
-      const garmentToDelete = wardrobe.find(g => g.id === garmentId);
-      if (garmentToDelete) {
-          await storage.deleteGarmentFromUserWardrobe(appState.userId, garmentToDelete);
-          setWardrobe(prev => prev.filter(g => g.id !== garmentId));
-          setPreparedWardrobe(prev => prev.filter(g => g.id !== garmentId));
-      }
+    if (appState.view !== 'dressing_room') return;
+    const garmentToDelete = wardrobe.find(g => g.id === garmentId);
+    if (garmentToDelete) {
+      await storage.deleteGarmentFromUserWardrobe(appState.userId, garmentToDelete);
+      setWardrobe(prev => prev.filter(g => g.id !== garmentId));
+      setPreparedWardrobe(prev => prev.filter(g => g.id !== garmentId));
+    }
   };
     
   const handleGarmentUpdate = async (garment: WardrobeItem) => {
-      if (appState.view !== 'dressing_room' || !garment.category) return;
-      await storage.updateGarmentInCategory(appState.userId, garment.id, garment.category);
-      setWardrobe(prev => prev.map(g => g.id === garment.id ? garment : g));
-      setPreparedWardrobe(prev => prev.map(g => g.id === garment.id ? garment : g));
+    if (appState.view !== 'dressing_room' || !garment.category) return;
+    await storage.updateGarmentInCategory(appState.userId, garment.id, garment.category);
+    setWardrobe(prev => prev.map(g => g.id === garment.id ? garment : g));
+    setPreparedWardrobe(prev => prev.map(g => g.id === garment.id ? garment : g));
   }
 
   const handleRemoveLastGarment = () => {
     if (outfitHistory.length > 1) {
       setOutfitHistory(prev => prev.slice(0, -1));
       setCurrentPoseIndex(0);
-      setPoseVariations({}); // Poses are specific to the top layer
+      setPoseVariations({});
     }
   };
   
   const handleSelectPose = async (index: number) => {
     if (isLoading) return;
     setCurrentPoseIndex(index);
-    if (poseVariations[index]) return; // Already generated
+    if (poseVariations[index]) return;
 
     setIsLoading(true);
     setLoadingMessage('A modell felkészül az új pózra...');
@@ -266,14 +257,13 @@ const App: React.FC = () => {
       const baseImageAsDataUrl = outfitHistory[outfitHistory.length - 1].imageUrl;
       const instruction = POSE_INSTRUCTIONS[index];
       setLoadingMessage(`"${instruction}" póz generálása...`);
-      
       const rawImageUrl = await generatePoseVariation(baseImageAsDataUrl, instruction);
       setLoadingMessage('Póz optimalizálása...');
       const newImageUrl = await resizeImageDataUrl(rawImageUrl, 1024);
       setPoseVariations(prev => ({ ...prev, [index]: newImageUrl }));
     } catch (err) {
       alert(`Hiba a póz generálásakor: ${getFriendlyErrorMessage(err)}`);
-      setCurrentPoseIndex(0); // Revert to a valid pose
+      setCurrentPoseIndex(0);
     } finally {
       setIsLoading(false);
       setLoadingMessage('');
@@ -312,8 +302,8 @@ const App: React.FC = () => {
       setLoadingMessage('Szett betöltése...');
       try {
         const rehydratedLayers: OutfitLayer[] = outfitToLoad.layers.map(layer => ({
-            garment: layer.garment ? wardrobe.find(w => w.id === layer.garment!.id) || layer.garment : null,
-            imageUrl: '' // This will be replaced
+          garment: layer.garment ? wardrobe.find(w => w.id === layer.garment!.id) || layer.garment : null,
+          imageUrl: '' // később töltjük
         }));
 
         const previewDataUrl = await imageUrlToDataUrl(outfitToLoad.previewImageUrl);
@@ -336,7 +326,6 @@ const App: React.FC = () => {
   };
   
   const handleDeleteOutfit = async (outfitId: string) => {
-    // FIX: Add a guard to ensure appState has userId before proceeding. This resolves a TypeScript error where appState could be in a state without a userId property.
     if (appState.view !== 'dressing_room') return;
     const outfitToDelete = savedOutfits.find(o => o.id === outfitId);
     if (outfitToDelete && window.confirm(`Biztosan törölni szeretnéd a(z) "${outfitToDelete.name}" szettet?`)) {
@@ -368,7 +357,9 @@ const App: React.FC = () => {
               onModelFinalized={handleModelCreated}
               initialFile={appState.file}
               onProcessingStart={() => {
-                  if (appState.file) setAppState(s => ({ ...s, file: null }))
+                if (appState.file) {
+                  setAppState(s => ({ ...s, file: null }));
+                }
               }}
             />
           </div>
@@ -390,40 +381,40 @@ const App: React.FC = () => {
               />
             </main>
             <aside className="w-full md:w-2/5 md:max-w-sm flex-shrink-0 bg-gray-100/60 p-4 rounded-lg flex flex-col gap-6 overflow-y-auto">
-                <CurrentOutfitPanel 
-                    outfitHistory={outfitHistory} 
-                    onRemoveLastGarment={handleRemoveLastGarment}
-                    onAddGarment={() => setIsWardrobeOpen(true)}
-                />
-                <div className="mt-auto flex gap-3">
-                  <button 
-                    onClick={handleSaveOutfit}
-                    disabled={isLoading || outfitHistory.length <= 1}
-                    className="flex-grow flex items-center justify-center bg-white border border-gray-300 text-gray-700 font-semibold py-3 px-4 rounded-lg transition-colors duration-200 ease-in-out hover:bg-gray-200 active:scale-95 disabled:opacity-50"
-                  >
-                    <SaveIcon className="w-5 h-5 mr-2" />
-                    Szett Mentése
-                  </button>
-                  <button 
-                    onClick={() => setIsSavedOutfitsOpen(true)}
-                    disabled={isLoading}
-                    className="flex-grow flex items-center justify-center bg-white border border-gray-300 text-gray-700 font-semibold py-3 px-4 rounded-lg transition-colors duration-200 ease-in-out hover:bg-gray-200 active:scale-95 disabled:opacity-50"
-                  >
-                    <LibraryIcon className="w-5 h-5 mr-2" />
-                    Mentett Szettek
-                  </button>
-                </div>
+              <CurrentOutfitPanel 
+                outfitHistory={outfitHistory} 
+                onRemoveLastGarment={handleRemoveLastGarment}
+                onAddGarment={() => setIsWardrobeOpen(true)}
+              />
+              <div className="mt-auto flex gap-3">
+                <button 
+                  onClick={handleSaveOutfit}
+                  disabled={isLoading || outfitHistory.length <= 1}
+                  className="flex-grow flex items-center justify-center bg-white border border-gray-300 text-gray-700 font-semibold py-3 px-4 rounded-lg transition-colors duration-200 ease-in-out hover:bg-gray-200 active:scale-95 disabled:opacity-50"
+                >
+                  <SaveIcon className="w-5 h-5 mr-2" />
+                  Szett Mentése
+                </button>
+                <button 
+                  onClick={() => setIsSavedOutfitsOpen(true)}
+                  disabled={isLoading}
+                  className="flex-grow flex items-center justify-center bg-white border border-gray-300 text-gray-700 font-semibold py-3 px-4 rounded-lg transition-colors duration-200 ease-in-out hover:bg-gray-200 active:scale-95 disabled:opacity-50"
+                >
+                  <LibraryIcon className="w-5 h-5 mr-2" />
+                  Mentett Szettek
+                </button>
+              </div>
             </aside>
             <WardrobeModal 
-                isOpen={isWardrobeOpen}
-                onClose={() => setIsWardrobeOpen(false)}
-                onGarmentSelect={handleAddGarment}
-                onGarmentAdd={handleGarmentAdd}
-                onGarmentDelete={handleGarmentDelete}
-                onGarmentUpdate={handleGarmentUpdate}
-                wardrobe={preparedWardrobe}
-                activeGarmentIds={activeGarmentIds}
-                isLoading={isLoading}
+              isOpen={isWardrobeOpen}
+              onClose={() => setIsWardrobeOpen(false)}
+              onGarmentSelect={handleAddGarment}
+              onGarmentAdd={handleGarmentAdd}
+              onGarmentDelete={handleGarmentDelete}
+              onGarmentUpdate={handleGarmentUpdate}
+              wardrobe={preparedWardrobe}
+              activeGarmentIds={activeGarmentIds}
+              isLoading={isLoading}
             />
             <SavedOutfitsModal
               isOpen={isSavedOutfitsOpen}
@@ -439,12 +430,14 @@ const App: React.FC = () => {
 
   return (
     <div className="flex flex-col h-screen bg-gray-50 font-sans antialiased">
-        {appState.view !== 'auth' && <Header />}
-        <div className="flex-grow flex w-full overflow-hidden">
-            {renderContent()}
-        </div>
-        <Footer isOnDressingScreen={appState.view === 'dressing_room'} />
-        <DebugModal isOpen={isDebugOpen} onClose={() => setIsDebugOpen(false)} />
+      {/* Minden <img>-et CDN-re ír élesben */}
+      <CdnRewriter />
+      {appState.view !== 'auth' && <Header />}
+      <div className="flex-grow flex w-full overflow-hidden">
+        {renderContent()}
+      </div>
+      <Footer isOnDressingScreen={appState.view === 'dressing_room'} />
+      <DebugModal isOpen={isDebugOpen} onClose={() => setIsDebugOpen(false)} />
     </div>
   );
 };
