@@ -14,7 +14,7 @@ import {
 
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string;
 if (!API_KEY) {
-  throw new Error("Hiányzik a VITE_GEMINI_API_KEY. Add meg az ENV-ben vagy a Netlify beállításoknál.");
+  throw new Error("Hiányzik a VITE_GEMINI_API_KEY. Add meg az ENV-ben vagy .env fájlban.");
 }
 
 const MODEL_ID =
@@ -84,26 +84,23 @@ async function generateImageFromParts(parts: Content["parts"], outMime: string) 
    =========================== */
 
 /**
- * DEFAULT EXPORT – a StartScreen ezt importálja.
- * Most „pass-through”: visszaadja a bemeneti képet (data URL).
- * Előnye: nincs policy-blokkolás valós fotóra a modell létrehozásakor.
- * Ha később szeretnél háttérlevágást/normalizálást, ide építjük be.
+ * Modellkép előkészítése a StartScreen számára.
+ * Most „pass-through”: visszaadja a bemeneti képet (data URL),
+ * így a modell létrehozás nem akad fenn policy-n.
  */
-export default async function generateModelImage(
-  baseImageDataUrl: string
-): Promise<string> {
+export async function generateModelImage(baseImageDataUrl: string): Promise<string> {
   if (!baseImageDataUrl?.startsWith("data:")) {
     throw new Error("generateModelImage: data URL képet várok.");
   }
-  // Itt lehetne opcionális méretezés/normalizálás.
+  // Ha később akarsz méretezést/normalizálást, ide kerül.
   return baseImageDataUrl;
 }
 
+// DEFAULT export is: a StartScreen default importja is működjön
+export default generateModelImage;
+
 /**
  * Virtuális „felpróbálás”: garment képet illeszti a modellre.
- * @param baseImageDataUrl – modell képe (data URL)
- * @param garmentDataUrl   – ruhadarab képe (data URL)
- * @returns data URL (PNG)
  */
 export async function generateVirtualTryOnImage(
   baseImageDataUrl: string,
@@ -132,9 +129,6 @@ export async function generateVirtualTryOnImage(
 
 /**
  * Új póz variáció ugyanarra a személyre/öltözetre.
- * @param baseImageDataUrl – aktuális (összeállított) kép (data URL)
- * @param instruction      – rövid utasítás (pl. „Slightly turned, 3/4 view”)
- * @returns data URL (PNG)
  */
 export async function generatePoseVariation(
   baseImageDataUrl: string,
