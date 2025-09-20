@@ -14,7 +14,7 @@ import {
 
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string;
 if (!API_KEY) {
-  throw new Error("Hiányzik a VITE_GEMINI_API_KEY. Add meg az ENV-ben vagy .env fájlban.");
+  throw new Error("Hiányzik a VITE_GEMINI_API_KEY. Add meg az ENV-ben vagy a Netlify beállításoknál.");
 }
 
 const MODEL_ID =
@@ -54,7 +54,7 @@ function formatGeminiError(e: unknown, context: string): Error {
 async function generateImageFromParts(parts: Content["parts"], outMime: string) {
   const model = genAI.getGenerativeModel({
     model: MODEL_ID,
-    safetySettings, // <- most már nem readonly típus
+    safetySettings,
     generationConfig: { responseMimeType: outMime },
   });
 
@@ -82,6 +82,22 @@ async function generateImageFromParts(parts: Content["parts"], outMime: string) 
 /* ===========================
    Publikus függvények
    =========================== */
+
+/**
+ * DEFAULT EXPORT – a StartScreen ezt importálja.
+ * Most „pass-through”: visszaadja a bemeneti képet (data URL).
+ * Előnye: nincs policy-blokkolás valós fotóra a modell létrehozásakor.
+ * Ha később szeretnél háttérlevágást/normalizálást, ide építjük be.
+ */
+export default async function generateModelImage(
+  baseImageDataUrl: string
+): Promise<string> {
+  if (!baseImageDataUrl?.startsWith("data:")) {
+    throw new Error("generateModelImage: data URL képet várok.");
+  }
+  // Itt lehetne opcionális méretezés/normalizálás.
+  return baseImageDataUrl;
+}
 
 /**
  * Virtuális „felpróbálás”: garment képet illeszti a modellre.
