@@ -1,5 +1,6 @@
 // services/geminiService.ts
-// VITE_GEMINI_API_KEY (opcionális, de a generáláshoz kell). Opcionális: VITE_GEMINI_MODEL.
+// Környezet: VITE_GEMINI_API_KEY (kötelező a híváshoz), VITE_GEMINI_MODEL (opcionális),
+//            VITE_ENABLE_GEMINI_IMAGE_OUTPUT = "true" esetén kérünk képkimenetet.
 
 import {
   GoogleGenerativeAI,
@@ -9,21 +10,24 @@ import {
 } from "@google/generative-ai";
 
 /* ===========================
-   Alapbeállítások
+   Beállítások / ENV
    =========================== */
 
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
 const MODEL_ID =
   (import.meta.env.VITE_GEMINI_MODEL as string) ?? "gemini-2.0-flash-exp";
 
-// Lazább szűrés (policy-t nem írja felül)
+// Ha NEM true, nem kérünk image/png kimenetet (külön engedélyezd, ha biztosan támogatja a projekted)
+const IMAGE_OUTPUT_ENABLED =
+  String(import.meta.env.VITE_ENABLE_GEMINI_IMAGE_OUTPUT).toLowerCase() === "true";
+
+// Lazább safety a nem policy-s kategóriákra
 const safetySettings: { category: HarmCategory; threshold: HarmBlockThreshold }[] = [
   { category: HarmCategory.HARM_CATEGORY_HARASSMENT,        threshold: HarmBlockThreshold.BLOCK_NONE },
   { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,       threshold: HarmBlockThreshold.BLOCK_NONE },
   { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
 ];
 
-// Csak akkor hozunk létre klienst, ha van kulcs – így nem hal el az app betöltéskor.
 function getGenAI(): GoogleGenerativeAI | null {
   try {
     if (!API_KEY) return null;
@@ -36,35 +40,45 @@ function getGenAI(): GoogleGenerativeAI | null {
 function requireGenAI(context: string): GoogleGenerativeAI {
   const client = getGenAI();
   if (!client) {
-    throw new Error(
-      `${context} nem futtatható: nincs beállítva Gemini API kulcs (VITE_GEMINI_API_KEY).`
-    );
+    throw new Error(`${context} nem futtatható: hiányzik a VITE_GEMINI_API_KEY.`);
   }
   return client;
 }
 
-/* ===========================
-   Segédfüggvények
-   =========================== */
-
 function parseDataUrl(dataUrl: string): { mimeType: string; base64: string } {
   const m = /^data:([^;]+);base64,(.*)$/i.exec(dataUrl);
-  if (!m) throw new Error("Érvénytelen data URL kép.");
+  if (!m) throw new Error("Érvénytelen data URL.");
   return { mimeType: m[1], base64: m[2] };
 }
 
 function formatGeminiError(e: unknown, context: string): Error {
   const msg = e instanceof Error ? e.message : String(e);
+  // Ha a Google „allowed mimetypes” szöveget adja vissza, fordítsuk le emberre:
+  if (/allowed mimetypes/i.test(msg)) {
+    return new Error(
+      `${context}: az aktuális modell/projekt nem enged képkimenetet ezen az endpointon. ` +
+      `Kapcsold be a képkimenetet (VITE_ENABLE_GEMINI_IMAGE_OUTPUT=true) és használj ` +
+      `olyan modellt, ami ezt tudja (pl. Gemini 2.5 Flash Image).`
+    );
+  }
   if (/SAFETY|HARM|BLOCK|PROHIBITED|POLICY|PERMISSION/i.test(msg)) {
-    return new Error(`A kérés blokkolva lett (${context}). Ok: PROHIBITED_CONTENT.`);
+    return new Error(`A kérés biztonsági okból blokkolva lett (${context}).`);
   }
   return new Error(`${context} nem sikerült. Részletek: ${msg}`);
 }
 
 async function generateImageFromParts(parts: Content["parts"], outMime: string) {
+  if (!IMAGE_OUTPUT_ENABLED) {
+    throw new Error(
+      "Képkimenet nincs engedélyezve. Állítsd be: VITE_ENABLE_GEMINI_IMAGE_OUTPUT=true " +
+      "és használj képkimenetet támogató modellt (pl. Gemini 2.5 Flash Image)."
+    );
+  }
+
   const model = requireGenAI("Kép generálás").getGenerativeModel({
     model: MODEL_ID,
     safetySettings,
+    // A 400-as hiba elkerülésére csak akkor kérünk image/png-t, ha tényleg engedélyezve van
     generationConfig: { responseMimeType: outMime },
   });
 
@@ -81,7 +95,7 @@ async function generateImageFromParts(parts: Content["parts"], outMime: string) 
 
   const txt = (result.response as any)?.text?.();
   if (txt) {
-    throw new Error("A modell szöveges választ adott vissza a kép helyett. Próbáld újra.");
+    throw new Error("A modell szöveget adott vissza a kép helyett. (Valószínűleg nem engedélyezett a képkimenet.)");
   }
 
   throw new Error("Nem érkezett kép a modeltől.");
@@ -91,7 +105,7 @@ async function generateImageFromParts(parts: Content["parts"], outMime: string) 
    Publikus API
    =========================== */
 
-/** StartScreen: pass-through, hogy kulcs nélkül is betöltsön az app */
+/** StartScreen kép-előkészítés — pass-through, hogy kulcs nélkül is betöltsön az app. */
 export async function generateModelImage(baseImageDataUrl: string): Promise<string> {
   if (!baseImageDataUrl?.startsWith("data:")) {
     throw new Error("generateModelImage: data URL képet várok.");
@@ -99,10 +113,10 @@ export async function generateModelImage(baseImageDataUrl: string): Promise<stri
   return baseImageDataUrl;
 }
 
-// Default export (StartScreen defaultként importálja)
+// Default export (ha valahol defaultként importálod)
 export default generateModelImage;
 
-/** Ruhadarab „felpróbálása” (Gemini szükséges) */
+/** Ruhadarab „felpróbálása” (Gemini kell + képkimenet legyen engedélyezve) */
 export async function generateVirtualTryOnImage(
   baseImageDataUrl: string,
   garmentDataUrl: string
@@ -114,7 +128,7 @@ export async function generateVirtualTryOnImage(
     const prompt =
       "You are a virtual try-on engine. Overlay and naturally fit the garment onto the person: " +
       "preserve body pose and proportions, align perspective, keep shadows/lighting coherent. " +
-      "Avoid warping the face/hair. Return the final composite as a clean image.";
+      "Avoid warping the face/hair. Return the final composite as an image.";
 
     const parts: Content["parts"] = [
       { text: prompt },
@@ -128,7 +142,7 @@ export async function generateVirtualTryOnImage(
   }
 }
 
-/** Póz variáció (Gemini szükséges) */
+/** Póz variáció (Gemini kell + képkimenet legyen engedélyezve) */
 export async function generatePoseVariation(
   baseImageDataUrl: string,
   instruction: string
@@ -137,9 +151,8 @@ export async function generatePoseVariation(
     const base = parseDataUrl(baseImageDataUrl);
 
     const prompt =
-      "Create a pose variation of the same person and outfit. " +
-      "Keep identity, outfit details, and overall style. Apply this pose instruction: " +
-      `"${instruction}". Return a full image as output.`;
+      "Create a pose variation of the same person and outfit. Keep identity and outfit details. " +
+      `Apply this pose instruction: "${instruction}". Return an image.`;
 
     const parts: Content["parts"] = [
       { text: prompt },

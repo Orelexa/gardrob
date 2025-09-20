@@ -1,163 +1,109 @@
 // components/SmartImage.tsx
-import React, { useState, useEffect, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useImageQueue } from "../lib/useImageQueue";
 
-type SmartImageProps = {
-  src: string;            // Firebase URL, site-relative, vagy ideiglenesen data:/blob:
-  srcAvif?: string;
-  srcWebp?: string;
-  alt: string;
-  widths?: number[];
-  sizes?: string;
+/**
+ * SmartImage
+ * - Láthatóság alapján lazy-load (IntersectionObserver)
+ * - Limitált párhuzamosítás (useImageQueue)
+ * - Netlify Image CDN használata akár lokálban is, ha megadod a VITE_NETLIFY_BASE-t
+ *   Példa: VITE_NETLIFY_BASE=https://orelexagardrob.netlify.app
+ */
+type Props = {
+  src: string;
+  alt?: string;
+  className?: string;
+  style?: React.CSSProperties;
   width?: number;
   height?: number;
-  className?: string;
-  placeholderSrc?: string;
-  lazy?: boolean;
+  fit?: "cover" | "contain" | "fill" | "none" | "scale-down";
+  priority?: boolean; // ha true: nem lazy
 };
 
-function isCdnEligible(u: string) {
-  if (!u) return false;
-  if (u.startsWith("data:")) return false;
-  if (u.startsWith("blob:")) return false;
-  if (u.startsWith("/")) return true; // site-relative
-  return u.startsWith("http://") || u.startsWith("https://");
-}
+function buildCdnUrl(raw: string, w?: number, h?: number) {
+  // csak a Firebasestorage-ot éri meg CDN-re küldeni
+  const isFirebase = /firebasestorage\.googleapis\.com/i.test(raw);
+  const base = (import.meta as any).env.VITE_NETLIFY_BASE as string | undefined; // pl. https://orelexagardrob.netlify.app
+  if (!isFirebase || !base) return raw;
 
-function toNetlifyCdnUrl(rawUrl: string, w?: number) {
-  const base = "/.netlify/images";
-  const p = new URLSearchParams();
-  p.set("url", rawUrl);
-  if (w && Number.isFinite(w)) p.set("w", String(w));
-  p.set("fit", "cover");
-  p.set("q", "75");
-  return `${base}?${p.toString()}`;
-}
+  const params = new URLSearchParams();
+  params.set("url", raw);
+  if (w) params.set("w", String(w));
+  if (h) params.set("h", String(h));
+  params.set("fit", "cover");
+  params.set("q", "75");
+  params.set("fm", "webp");
 
-/** Prodban CDN-t használunk, de csak CDN-kompatibilis URL-re (http/https vagy /...). */
-function useCdnEnabled(src: string) {
-  if (!isCdnEligible(src)) return false;
-  if (import.meta.env.PROD) return true;
-  const flag = import.meta.env?.VITE_USE_NETLIFY_IMAGE_CDN;
-  return String(flag).toLowerCase() === "true";
+  return `${base.replace(/\/$/, "")}/.netlify/images?${params.toString()}`;
 }
 
 export default function SmartImage({
   src,
-  srcAvif,
-  srcWebp,
-  alt,
-  widths = [320, 480, 640, 960, 1280],
-  sizes = "(max-width: 640px) 100vw, 50vw",
+  alt = "",
+  className,
+  style,
   width,
   height,
-  className,
-  placeholderSrc,
-  lazy = true,
-}: SmartImageProps) {
-  const [loaded, setLoaded] = useState(false);
-  const [inView, setInView] = useState(!lazy);
-  const ref = useRef<HTMLDivElement | null>(null);
-  const cdnOn = useCdnEnabled(src);
+  fit = "cover",
+  priority = false,
+}: Props) {
+  const ref = useRef<HTMLImageElement | null>(null);
+  const [visible, setVisible] = useState<boolean>(priority);
+  const [finalSrc, setFinalSrc] = useState<string>("");
+  const { load } = useImageQueue(6);
 
+  const targetUrl = useMemo(() => buildCdnUrl(src, width, height), [src, width, height]);
+
+  // Láthatóság figyelés (ha nem priority)
   useEffect(() => {
-    if (!lazy || inView) return;
+    if (priority) {
+      setVisible(true);
+      return;
+    }
     const el = ref.current;
     if (!el) return;
+
     const io = new IntersectionObserver(
       (entries) => {
-        for (const e of entries) {
-          if (e.isIntersecting) {
-            setInView(true);
-            io.disconnect();
-            break;
-          }
+        const entry = entries[0];
+        if (entry.isIntersecting) {
+          setVisible(true);
+          io.disconnect();
         }
       },
-      { rootMargin: "200px" }
+      { root: null, rootMargin: "200px", threshold: 0.01 }
     );
     io.observe(el);
     return () => io.disconnect();
-  }, [lazy, inView]);
+  }, [priority]);
 
-  function buildSrcset(u: string) {
-    return widths.map((w) => `${cdnOn ? toNetlifyCdnUrl(u, w) : u} ${w}w`).join(", ");
-  }
-
-  const actualSrc = cdnOn ? toNetlifyCdnUrl(src, width) : src;
-
-  // Debug: nézd a böngésző konzolt
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      console.log("[SmartImage]", { cdnOn, src, actualSrc });
-    }
-  }, [cdnOn, src, actualSrc]);
+    let aborted = false;
+    if (!visible) return;
 
-  const img = (
-    <img
-      src={actualSrc}
-      srcSet={buildSrcset(src)}
-      sizes={sizes}
-      alt={alt}
-      width={width}
-      height={height}
-      loading={lazy ? "lazy" : "eager"}
-      decoding="async"
-      onLoad={() => setLoaded(true)}
-      style={{
-        display: "block",
-        width: width ? `${width}px` : "100%",
-        height: height ? `${height}px` : "auto",
-      }}
-      className={className}
-    />
-  );
+    load(targetUrl)
+      .then((url) => {
+        if (!aborted) setFinalSrc(url);
+      })
+      .catch(() => {
+        if (!aborted) setFinalSrc(src); // fallback az eredetire
+      });
+
+    return () => {
+      aborted = true;
+    };
+  }, [visible, targetUrl, src, load]);
 
   return (
-    <div
+    <img
       ref={ref}
-      style={{
-        position: "relative",
-        overflow: "hidden",
-        width: width ? `${width}px` : "100%",
-        height: height ? `${height}px` : "auto",
-      }}
-    >
-      {placeholderSrc && !loaded && (
-        <img
-          src={placeholderSrc}
-          alt=""
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            inset: 0,
-            filter: "blur(12px)",
-            transform: "scale(1.05)",
-            objectFit: "cover",
-            width: "100%",
-            height: "100%",
-          }}
-        />
-      )}
-
-      {inView ? (
-        srcAvif || srcWebp ? (
-          <picture>
-            {srcAvif && <source type="image/avif" srcSet={buildSrcset(srcAvif)} sizes={sizes} />}
-            {srcWebp && <source type="image/webp" srcSet={buildSrcset(srcWebp)} sizes={sizes} />}
-            {img}
-          </picture>
-        ) : (
-          img
-        )
-      ) : (
-        <div
-          style={{
-            background: "#f1f1f1",
-            width: width ? `${width}px` : "100%",
-            height: height ? `${height}px` : "200px",
-          }}
-        />
-      )}
-    </div>
+      src={finalSrc || undefined}
+      alt={alt}
+      className={className}
+      style={{ objectFit: fit, width, height, ...style }}
+      loading={priority ? "eager" : "lazy"}
+      decoding="async"
+      fetchPriority={priority ? ("high" as any) : ("auto" as any)}
+    />
   );
 }
