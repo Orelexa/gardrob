@@ -1,6 +1,7 @@
 // services/geminiService.ts
-// Környezet: VITE_GEMINI_API_KEY (kötelező a híváshoz), VITE_GEMINI_MODEL (opcionális),
-//            VITE_ENABLE_GEMINI_IMAGE_OUTPUT = "true" esetén kérünk képkimenetet.
+// ENV: VITE_GEMINI_API_KEY (kötelező),
+//      VITE_GEMINI_MODEL (pl. "gemini-2.5-flash-image"),
+//      VITE_ENABLE_GEMINI_IMAGE_OUTPUT = "true" ha image/png kimenetet kérünk.
 
 import {
   GoogleGenerativeAI,
@@ -9,24 +10,46 @@ import {
   type Content,
 } from "@google/generative-ai";
 
-/* ===========================
-   Beállítások / ENV
-   =========================== */
+/* ========= Beállítások / ENV ========= */
 
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
 const MODEL_ID =
   (import.meta.env.VITE_GEMINI_MODEL as string) ?? "gemini-2.0-flash-exp";
 
-// Ha NEM true, nem kérünk image/png kimenetet (külön engedélyezd, ha biztosan támogatja a projekted)
 const IMAGE_OUTPUT_ENABLED =
   String(import.meta.env.VITE_ENABLE_GEMINI_IMAGE_OUTPUT).toLowerCase() === "true";
 
-// Lazább safety a nem policy-s kategóriákra
 const safetySettings: { category: HarmCategory; threshold: HarmBlockThreshold }[] = [
   { category: HarmCategory.HARM_CATEGORY_HARASSMENT,        threshold: HarmBlockThreshold.BLOCK_NONE },
   { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,       threshold: HarmBlockThreshold.BLOCK_NONE },
   { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
 ];
+
+/* ========= Segédek ========= */
+
+// File/Blob -> data URL
+function blobToDataURL(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(r.error ?? new Error("FileReader error"));
+    r.readAsDataURL(blob);
+  });
+}
+
+// Bármit kaptunk (string | Blob | File) → data URL string
+async function ensureDataUrl(input: unknown, ctx: string): Promise<string> {
+  if (typeof input === "string") {
+    if (!input.startsWith("data:")) {
+      throw new Error(`${ctx}: data URL stringet várok (data:... formátum).`);
+    }
+    return input;
+  }
+  if (typeof Blob !== "undefined" && input instanceof Blob) {
+    return await blobToDataURL(input);
+  }
+  throw new Error(`${ctx}: ismeretlen bemenet (nem string és nem File/Blob).`);
+}
 
 function getGenAI(): GoogleGenerativeAI | null {
   try {
@@ -53,12 +76,11 @@ function parseDataUrl(dataUrl: string): { mimeType: string; base64: string } {
 
 function formatGeminiError(e: unknown, context: string): Error {
   const msg = e instanceof Error ? e.message : String(e);
-  // Ha a Google „allowed mimetypes” szöveget adja vissza, fordítsuk le emberre:
   if (/allowed mimetypes/i.test(msg)) {
     return new Error(
-      `${context}: az aktuális modell/projekt nem enged képkimenetet ezen az endpointon. ` +
-      `Kapcsold be a képkimenetet (VITE_ENABLE_GEMINI_IMAGE_OUTPUT=true) és használj ` +
-      `olyan modellt, ami ezt tudja (pl. Gemini 2.5 Flash Image).`
+      `${context}: a jelenlegi modell/projekt ezen az endpointon nem adhat képkimenetet. ` +
+      `Kapcsold be: VITE_ENABLE_GEMINI_IMAGE_OUTPUT=true és állíts be image-kimenetes modellt ` +
+      `(pl. VITE_GEMINI_MODEL=gemini-2.5-flash-image).`
     );
   }
   if (/SAFETY|HARM|BLOCK|PROHIBITED|POLICY|PERMISSION/i.test(msg)) {
@@ -71,14 +93,13 @@ async function generateImageFromParts(parts: Content["parts"], outMime: string) 
   if (!IMAGE_OUTPUT_ENABLED) {
     throw new Error(
       "Képkimenet nincs engedélyezve. Állítsd be: VITE_ENABLE_GEMINI_IMAGE_OUTPUT=true " +
-      "és használj képkimenetet támogató modellt (pl. Gemini 2.5 Flash Image)."
+      "és használj képkimenetet támogató modellt (pl. gemini-2.5-flash-image)."
     );
   }
 
   const model = requireGenAI("Kép generálás").getGenerativeModel({
     model: MODEL_ID,
     safetySettings,
-    // A 400-as hiba elkerülésére csak akkor kérünk image/png-t, ha tényleg engedélyezve van
     generationConfig: { responseMimeType: outMime },
   });
 
@@ -95,35 +116,33 @@ async function generateImageFromParts(parts: Content["parts"], outMime: string) 
 
   const txt = (result.response as any)?.text?.();
   if (txt) {
-    throw new Error("A modell szöveget adott vissza a kép helyett. (Valószínűleg nem engedélyezett a képkimenet.)");
+    throw new Error("A modell szöveget adott vissza a kép helyett. Valószínűleg nincs engedélyezve a képkimenet.");
   }
 
   throw new Error("Nem érkezett kép a modeltől.");
 }
 
-/* ===========================
-   Publikus API
-   =========================== */
+/* ========= Publikus API ========= */
 
-/** StartScreen kép-előkészítés — pass-through, hogy kulcs nélkül is betöltsön az app. */
-export async function generateModelImage(baseImageDataUrl: string): Promise<string> {
-  if (!baseImageDataUrl?.startsWith("data:")) {
-    throw new Error("generateModelImage: data URL képet várok.");
-  }
-  return baseImageDataUrl;
+/** StartScreen – átengedi, de fogad stringet és File/Blob-ot is. */
+export async function generateModelImage(baseImage: unknown): Promise<string> {
+  const dataUrl = await ensureDataUrl(baseImage, "generateModelImage");
+  return dataUrl;
 }
 
-// Default export (ha valahol defaultként importálod)
 export default generateModelImage;
 
-/** Ruhadarab „felpróbálása” (Gemini kell + képkimenet legyen engedélyezve) */
+/** Ruhadarab „felpróbálása” – képkimenet kell hozzá */
 export async function generateVirtualTryOnImage(
-  baseImageDataUrl: string,
-  garmentDataUrl: string
+  baseImage: unknown,
+  garmentImage: unknown
 ): Promise<string> {
   try {
-    const base = parseDataUrl(baseImageDataUrl);
-    const garment = parseDataUrl(garmentDataUrl);
+    const baseUrl = await ensureDataUrl(baseImage, "Ruhadarab felpróbálása (modell)");
+    const garmentUrl = await ensureDataUrl(garmentImage, "Ruhadarab felpróbálása (ruhadarab)");
+
+    const base = parseDataUrl(baseUrl);
+    const garment = parseDataUrl(garmentUrl);
 
     const prompt =
       "You are a virtual try-on engine. Overlay and naturally fit the garment onto the person: " +
@@ -142,13 +161,14 @@ export async function generateVirtualTryOnImage(
   }
 }
 
-/** Póz variáció (Gemini kell + képkimenet legyen engedélyezve) */
+/** Póz variáció – képkimenet kell hozzá */
 export async function generatePoseVariation(
-  baseImageDataUrl: string,
+  baseImage: unknown,
   instruction: string
 ): Promise<string> {
   try {
-    const base = parseDataUrl(baseImageDataUrl);
+    const baseUrl = await ensureDataUrl(baseImage, "Póz generálása (alapkép)");
+    const base = parseDataUrl(baseUrl);
 
     const prompt =
       "Create a pose variation of the same person and outfit. Keep identity and outfit details. " +
