@@ -1,27 +1,38 @@
+// components/SmartImage.tsx
 import React, { useState, useEffect, useRef } from "react";
 
 type SmartImageProps = {
-  /** Az alap (fallback) kép URL-je (lehet remote is) */
   src: string;
-  /** AVIF és WebP alternatívák (opcionális, ha van ilyen URL-ed) */
   srcAvif?: string;
   srcWebp?: string;
-  /** Kötelező alt a hozzáférhetőség miatt */
   alt: string;
-  /** Szélességi töréspontok a srcsethez (px) – kisebb képernyő, kisebb fájl */
   widths?: number[];
-  /** sizes attribútum – mondd meg, kb. mekkora helyen jelenik meg */
   sizes?: string;
-  /** Fix méretek a layout shift elkerülésére (erősen ajánlott) */
   width?: number;
   height?: number;
-  /** Kerekítés, illesztés stb. – továbbadjuk a className-t */
   className?: string;
-  /** LQIP / blur placeholder (data URL vagy kis kép URL-je) */
   placeholderSrc?: string;
-  /** Ha true, csak akkor töltjük a „nagy” képet, ha tényleg látszik */
   lazy?: boolean;
 };
+
+function toNetlifyCdnUrl(rawUrl: string, w?: number) {
+  const base = "/.netlify/images";
+  const p = new URLSearchParams();
+  p.set("url", rawUrl);
+  if (w && Number.isFinite(w)) p.set("w", String(w));
+  p.set("fit", "cover");
+  p.set("q", "75");
+  return `${base}?${p.toString()}`;
+}
+
+/** Prodban mindig CDN, devben marad az eredeti URL. */
+function useCdnEnabled() {
+  // Vite flag-ek: DEV / PROD
+  if (import.meta.env.PROD) return true;
+  // Ha külön szeretnéd lokálban is kényszeríteni, tedd .env-be: VITE_USE_NETLIFY_IMAGE_CDN=true
+  const flag = import.meta.env?.VITE_USE_NETLIFY_IMAGE_CDN;
+  return String(flag).toLowerCase() === "true";
+}
 
 export default function SmartImage({
   src,
@@ -39,38 +50,48 @@ export default function SmartImage({
   const [loaded, setLoaded] = useState(false);
   const [inView, setInView] = useState(!lazy);
   const ref = useRef<HTMLDivElement | null>(null);
+  const cdnOn = useCdnEnabled();
 
-  // Egyszerű IntersectionObserver – csak akkor kezdünk tölteni, ha látszik
   useEffect(() => {
     if (!lazy || inView) return;
     const el = ref.current;
     if (!el) return;
     const io = new IntersectionObserver(
       (entries) => {
-        entries.forEach((e) => {
+        for (const e of entries) {
           if (e.isIntersecting) {
             setInView(true);
             io.disconnect();
+            break;
           }
-        });
+        }
       },
-      { rootMargin: "200px" } // előtöltés kicsivel korábban
+      { rootMargin: "200px" }
     );
     io.observe(el);
     return () => io.disconnect();
   }, [lazy, inView]);
 
-  // Készítsünk egyszerű srcsetet ugyanazzal az alappal, ha az URL végén méretfüggetlen fájl van.
-  // Ha CDN-ed tud méretezni (pl. query paramokkal), itt állítsd össze a megfelelő URL-eket.
   function buildSrcset(u: string) {
-    // Alapeset: ugyanazt az URL-t adja vissza, mert nincs szerver oldali méretezés.
-    // Ha van méretező szolgáltatásod, IDE illeszd be (pl. u + `?w=${w}`)
-    return widths.map((w) => `${u} ${w}w`).join(", ");
+    return widths
+      .map((w) => `${cdnOn ? toNetlifyCdnUrl(u, w) : u} ${w}w`)
+      .join(", ");
   }
+
+  const actualSrc = cdnOn ? toNetlifyCdnUrl(src, width) : src;
+
+  // Debug: ellenőrizd a böngésző Konzolában (F12 → Console)
+  useEffect(() => {
+    // csak prodon érdekes igazán
+    if (typeof window !== "undefined") {
+      // Rövid, de informatív log
+      console.log("[SmartImage]", { cdnOn, src, actualSrc });
+    }
+  }, [cdnOn, src, actualSrc]);
 
   const img = (
     <img
-      src={src}
+      src={actualSrc}
       srcSet={buildSrcset(src)}
       sizes={sizes}
       alt={alt}
@@ -98,7 +119,6 @@ export default function SmartImage({
         height: height ? `${height}px` : "auto",
       }}
     >
-      {/* Placeholder (elmosott kis kép) – amíg a nagy nem jön le */}
       {placeholderSrc && !loaded && (
         <img
           src={placeholderSrc}
@@ -116,7 +136,6 @@ export default function SmartImage({
         />
       )}
 
-      {/* Modern formátumok <picture>-rel (ha megadtad az URL-t) */}
       {inView ? (
         srcAvif || srcWebp ? (
           <picture>
@@ -128,7 +147,6 @@ export default function SmartImage({
           img
         )
       ) : (
-        // Ha még nem látszik és lazy, foglaljuk a helyet (layout shift elkerülése)
         <div
           style={{
             background: "#f1f1f1",
