@@ -47,7 +47,7 @@ const POSE_INSTRUCTIONS = [
 const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>({ view: 'loading' });
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [user, setUser] = useState<User | null>(null);
+  const [, setUser] = useState<User | null>(null);
 
   // Dressing Room State
   const [outfitHistory, setOutfitHistory] = useState<OutfitLayer[]>([]);

@@ -8,8 +8,12 @@
 # --- Netlify Image CDN: engedélyezett TÁVOLI képek (Firebase Storage) ---
 [images]
 remote_images = [
-  "https://firebasestorage.googleapis.com/v0/b/orelexa-gardrob.firebasestorage.app/.*"
+  # Firebase bucket
+  "https://firebasestorage.googleapis.com/v0/b/orelexa-gardrob.firebasestorage.app/*",
+  # jsDelivr (itt voltak a 400-as hibák)
+  "https://cdn.jsdelivr.net/*"
 ]
+
 
 # --- Cache fejek ---
 [[headers]]
