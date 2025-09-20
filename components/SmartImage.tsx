@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from "react";
 
 type SmartImageProps = {
-  src: string;
+  src: string;            // Firebase URL, site-relative, vagy ideiglenesen data:/blob:
   srcAvif?: string;
   srcWebp?: string;
   alt: string;
@@ -15,6 +15,14 @@ type SmartImageProps = {
   lazy?: boolean;
 };
 
+function isCdnEligible(u: string) {
+  if (!u) return false;
+  if (u.startsWith("data:")) return false;
+  if (u.startsWith("blob:")) return false;
+  if (u.startsWith("/")) return true; // site-relative
+  return u.startsWith("http://") || u.startsWith("https://");
+}
+
 function toNetlifyCdnUrl(rawUrl: string, w?: number) {
   const base = "/.netlify/images";
   const p = new URLSearchParams();
@@ -25,11 +33,10 @@ function toNetlifyCdnUrl(rawUrl: string, w?: number) {
   return `${base}?${p.toString()}`;
 }
 
-/** Prodban mindig CDN, devben marad az eredeti URL. */
-function useCdnEnabled() {
-  // Vite flag-ek: DEV / PROD
+/** Prodban CDN-t használunk, de csak CDN-kompatibilis URL-re (http/https vagy /...). */
+function useCdnEnabled(src: string) {
+  if (!isCdnEligible(src)) return false;
   if (import.meta.env.PROD) return true;
-  // Ha külön szeretnéd lokálban is kényszeríteni, tedd .env-be: VITE_USE_NETLIFY_IMAGE_CDN=true
   const flag = import.meta.env?.VITE_USE_NETLIFY_IMAGE_CDN;
   return String(flag).toLowerCase() === "true";
 }
@@ -50,7 +57,7 @@ export default function SmartImage({
   const [loaded, setLoaded] = useState(false);
   const [inView, setInView] = useState(!lazy);
   const ref = useRef<HTMLDivElement | null>(null);
-  const cdnOn = useCdnEnabled();
+  const cdnOn = useCdnEnabled(src);
 
   useEffect(() => {
     if (!lazy || inView) return;
@@ -73,18 +80,14 @@ export default function SmartImage({
   }, [lazy, inView]);
 
   function buildSrcset(u: string) {
-    return widths
-      .map((w) => `${cdnOn ? toNetlifyCdnUrl(u, w) : u} ${w}w`)
-      .join(", ");
+    return widths.map((w) => `${cdnOn ? toNetlifyCdnUrl(u, w) : u} ${w}w`).join(", ");
   }
 
   const actualSrc = cdnOn ? toNetlifyCdnUrl(src, width) : src;
 
-  // Debug: ellenőrizd a böngésző Konzolában (F12 → Console)
+  // Debug: nézd a böngésző konzolt
   useEffect(() => {
-    // csak prodon érdekes igazán
     if (typeof window !== "undefined") {
-      // Rövid, de informatív log
       console.log("[SmartImage]", { cdnOn, src, actualSrc });
     }
   }, [cdnOn, src, actualSrc]);
