@@ -1,6 +1,26 @@
+# --- (Opcionális) API proxy példa ---
+# Ha kell egy külső szerver hívás proxyn keresztül, töltsd ki a to= címet.
+# Ha nincs rá szükséged, ezt a blokkot nyugodtan törölheted.
 [[redirects]]
   from = "/api/gemini-proxy"
-  to = "https://külső-szerver-url/api/v1/endpoint" # Ezt cseréld le a valódi proxy cél URL-re
+  to = "https://VALODI-SZERVER.DOMAIN/api/v1/endpoint"
   status = 200
   force = true
-  methods = ["POST"]
+
+# --- Netlify Image CDN: engedélyezett távoli képek (Firebase Storage) ---
+[images]
+remote_images = [
+  # A te Firebase bucket-ed
+  "https://firebasestorage.googleapis.com/v0/b/orelexa-gardrob.firebasestorage.app/.*"
+]
+
+# --- Cache fejek ---
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/**/*.@(jpg|jpeg|png|gif|webp|avif|svg)"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
